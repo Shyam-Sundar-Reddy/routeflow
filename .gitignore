@@ -1,0 +1,45 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+*.pyd
+build/
+dist/
+wheels/
+*.egg-info/
+*.egg
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment files
+.env
+.env.*
+
+# Testing / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+
+# Type checking / linting
+.mypy_cache/
+.ruff_cache/
+.pytype/
+
+# Packaging
+*.tar.gz
+*.whl
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local notes / agent context
+AGENTS.md

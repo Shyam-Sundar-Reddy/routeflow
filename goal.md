@@ -1,0 +1,7 @@
+Problem Statement
+
+FastAPI makes building APIs fast — but debugging them hasn't kept up. As soon as an application grows past a few endpoints, execution logic spreads across services, middlewares, dependencies, and background tasks. When something breaks or slows down, developers are left piecing together what happened by scrolling through scattered, unstructured logs. Swagger documents the contract of an API — what routes exist and what they accept — but it says nothing about what actually happens when a request runs. There's no visual, real-time way to see how a request moves through a system, where time is spent, or exactly where something failed. Debugging today means mentally reconstructing a flow that should be visible in the first place.
+
+Objective
+
+RouteFlow aims to make execution inside FastAPI applications visible, not just loggable. By letting developers mark functions or services with a simple decorator, RouteFlow tracks the real-time execution path of any request and renders it as an interactive node graph — showing order, timing, logs, and errors exactly where they occur. It extends the Swagger experience with a flow view built for debugging, not just documentation, so developers can see problems instead of searching for them. Running locally in development, RouteFlow's long-term goal is to become the visual foundation for debugging not just APIs, but AI agent workflows and distributed systems as they grow more complex.
