@@ -52,11 +52,19 @@ def close_span(span: Span) -> None:
 def span_scope(name: str) -> Iterator[Span]:
     """Open a span, make it the current span for the duration of the block,
     and close it on exit — success or failure alike.
+
+    An exception raised inside the block is recorded on the span (so it
+    doesn't get silently marked "ok" by close_span) and always re-raised
+    unchanged — this must never alter what the wrapped code does, only
+    observe it.
     """
     span = open_span(name)
     token = set_current_span(span)
     try:
         yield span
+    except BaseException as exc:
+        span.record_error(exc)
+        raise
     finally:
         close_span(span)
         reset_current_span(token)

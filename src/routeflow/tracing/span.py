@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import traceback
 import uuid
 from dataclasses import dataclass, field
 
@@ -17,6 +18,28 @@ class LogEntry:
 
     message: str
     timestamp: float = field(default_factory=time.perf_counter)
+
+
+@dataclass
+class ErrorInfo:
+    """The exception that made a span fail, captured as plain data —
+    never the live exception object, so a trace can outlive the stack
+    frame that raised it and still be serialized safely.
+    """
+
+    type: str
+    message: str
+    traceback: str
+
+    @classmethod
+    def from_exception(cls, exc: BaseException) -> ErrorInfo:
+        return cls(
+            type=type(exc).__name__,
+            message=str(exc),
+            traceback="".join(
+                traceback.format_exception(type(exc), exc, exc.__traceback__)
+            ),
+        )
 
 
 @dataclass
@@ -39,10 +62,21 @@ class Span:
     end_time: float | None = None
     status: str = "running"
     logs: list[LogEntry] = field(default_factory=list)
+    error: ErrorInfo | None = None
 
     def log(self, message: str) -> None:
         """Record a log line against this span, timestamped now."""
         self.logs.append(LogEntry(message=message))
+
+    def record_error(self, exc: BaseException) -> None:
+        """Attach an exception to this span and mark it errored.
+
+        Does not raise or suppress anything — callers (the decorator, the
+        middleware) are still responsible for re-raising `exc` themselves
+        so the app's own error handling is never altered.
+        """
+        self.error = ErrorInfo.from_exception(exc)
+        self.status = "error"
 
     @property
     def duration(self) -> float | None:
