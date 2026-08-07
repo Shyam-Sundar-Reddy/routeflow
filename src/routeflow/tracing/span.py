@@ -10,6 +10,16 @@ def _new_span_id() -> str:
 
 
 @dataclass
+class LogEntry:
+    """One log line captured during a span, timestamped relative to the
+    same clock as the span itself so it can be placed on the timeline.
+    """
+
+    message: str
+    timestamp: float = field(default_factory=time.perf_counter)
+
+
+@dataclass
 class Span:
     """A single traced call within a request's execution.
 
@@ -28,6 +38,11 @@ class Span:
     start_time: float = field(default_factory=time.perf_counter)
     end_time: float | None = None
     status: str = "running"
+    logs: list[LogEntry] = field(default_factory=list)
+
+    def log(self, message: str) -> None:
+        """Record a log line against this span, timestamped now."""
+        self.logs.append(LogEntry(message=message))
 
     @property
     def duration(self) -> float | None:
