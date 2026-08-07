@@ -39,8 +39,13 @@ def open_span(name: str) -> Span:
 
 
 def close_span(span: Span) -> None:
-    """Mark a span finished by recording its end time."""
-    span.end_time = time.monotonic()
+    """Mark a span finished: record its end time and, unless something
+    already flagged it otherwise (e.g. `record_error`), derive a final
+    "ok" status from having completed without one.
+    """
+    span.end_time = time.perf_counter()
+    if span.status == "running":
+        span.status = "ok"
 
 
 @contextmanager

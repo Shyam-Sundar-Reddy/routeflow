@@ -22,6 +22,22 @@ class Span:
     trace_id: str
     parent_id: str | None = None
     span_id: str = field(default_factory=_new_span_id)
-    start_time: float = field(default_factory=time.monotonic)
+    # perf_counter, not monotonic: monotonic's resolution varies by platform
+    # (~15ms via GetTickCount64 on Windows) and is too coarse for timing
+    # individual calls. perf_counter is the stdlib clock meant for this.
+    start_time: float = field(default_factory=time.perf_counter)
     end_time: float | None = None
     status: str = "running"
+
+    @property
+    def duration(self) -> float | None:
+        """Wall-clock time the call took, in seconds — `None` until closed."""
+        if self.end_time is None:
+            return None
+        return self.end_time - self.start_time
+
+    @property
+    def duration_ms(self) -> float | None:
+        """`duration` in milliseconds, for display."""
+        duration = self.duration
+        return None if duration is None else duration * 1000
