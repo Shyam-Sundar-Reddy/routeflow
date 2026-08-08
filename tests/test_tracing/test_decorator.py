@@ -69,3 +69,35 @@ def test_wraps_preserves_name_with_factory_form() -> None:
 
     # The span gets the override, but the function's own identity is untouched.
     assert charge_card.__name__ == "charge_card"
+
+
+def test_nested_track_calls_build_the_expected_tree(trace: Trace) -> None:
+    @track
+    def stripe_api_call(amount: int) -> int:
+        return amount
+
+    @track
+    def charge_card(amount: int) -> int:
+        return stripe_api_call(amount)
+
+    @track
+    def validate_payment(amount: int) -> bool:
+        return amount > 0
+
+    @track
+    def handle_order(amount: int) -> int:
+        validate_payment(amount)
+        return charge_card(amount)
+
+    handle_order(100)
+
+    (root,) = trace.root_spans()
+    assert root.name == "handle_order"
+
+    children = trace.children_of(root.span_id)
+    assert [span.name for span in children] == ["validate_payment", "charge_card"]
+
+    charge_span = children[1]
+    (grandchild,) = trace.children_of(charge_span.span_id)
+    assert grandchild.name == "stripe_api_call"
+    assert grandchild.parent_id == charge_span.span_id
