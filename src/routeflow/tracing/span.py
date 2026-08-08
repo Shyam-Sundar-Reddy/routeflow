@@ -63,6 +63,10 @@ class Span:
     status: str = "running"
     logs: list[LogEntry] = field(default_factory=list)
     error: ErrorInfo | None = None
+    # Captured call arguments, already redacted and stringified by the
+    # decorator — never the live objects. Empty when argument capture was
+    # skipped (capture_args=False) or the span wasn't opened by @track.
+    args: dict[str, str] = field(default_factory=dict)
 
     def log(self, message: str) -> None:
         """Record a log line against this span, timestamped now."""
