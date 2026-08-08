@@ -101,3 +101,66 @@ def test_nested_track_calls_build_the_expected_tree(trace: Trace) -> None:
     (grandchild,) = trace.children_of(charge_span.span_id)
     assert grandchild.name == "stripe_api_call"
     assert grandchild.parent_id == charge_span.span_id
+
+
+def test_sync_exception_is_recorded_and_still_raised(trace: Trace) -> None:
+    @track
+    def boom() -> None:
+        raise ValueError("sync boom")
+
+    try:
+        boom()
+        assert False, "boom() should have raised"
+    except ValueError as exc:
+        assert str(exc) == "sync boom"
+
+    (span,) = trace.spans.values()
+    assert span.status == "error"
+    assert span.error is not None
+    assert span.error.type == "ValueError"
+    assert span.error.message == "sync boom"
+
+
+def test_async_exception_is_recorded_and_still_raised(trace: Trace) -> None:
+    @track
+    async def aboom() -> None:
+        raise ValueError("async boom")
+
+    try:
+        asyncio.run(aboom())
+        assert False, "aboom() should have raised"
+    except ValueError as exc:
+        assert str(exc) == "async boom"
+
+    (span,) = trace.spans.values()
+    assert span.status == "error"
+    assert span.error.type == "ValueError"
+
+
+def test_exception_marks_every_ancestor_span_errored(trace: Trace) -> None:
+    """A failure three calls deep must not look "contained" — every span
+    on the path back to the root should show the same failure, matching
+    what the flow view renders (error state visible at every ancestor,
+    not just the span that actually raised).
+    """
+
+    @track
+    def stripe_api_call() -> None:
+        raise TimeoutError("timed out")
+
+    @track
+    def charge_card() -> None:
+        stripe_api_call()
+
+    @track
+    def handle_order() -> None:
+        charge_card()
+
+    try:
+        handle_order()
+        assert False, "handle_order() should have raised"
+    except TimeoutError:
+        pass
+
+    assert {span.status for span in trace.spans.values()} == {"error"}
+    assert {span.error.type for span in trace.spans.values()} == {"TimeoutError"}
