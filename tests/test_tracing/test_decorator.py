@@ -164,3 +164,37 @@ def test_exception_marks_every_ancestor_span_errored(trace: Trace) -> None:
 
     assert {span.status for span in trace.spans.values()} == {"error"}
     assert {span.error.type for span in trace.spans.values()} == {"TimeoutError"}
+
+
+def test_args_are_captured_by_name_with_defaults_applied(trace: Trace) -> None:
+    @track
+    def charge_card(amount: int, currency: str = "usd") -> int:
+        return amount
+
+    charge_card(100)
+
+    (span,) = trace.spans.values()
+    assert span.args == {"amount": "100", "currency": "'usd'"}
+
+
+def test_redact_hook_masks_a_captured_argument(trace: Trace) -> None:
+    @track(redact=lambda name, value: "***" if name == "password" else value)
+    def login(user: str, password: str) -> bool:
+        return True
+
+    login("sam", "hunter2")
+
+    (span,) = trace.spans.values()
+    assert span.args["user"] == "'sam'"
+    assert span.args["password"] == "'***'"
+
+
+def test_capture_args_false_skips_capture_entirely(trace: Trace) -> None:
+    @track(capture_args=False)
+    def login(user: str, password: str) -> bool:
+        return True
+
+    login("sam", "hunter2")
+
+    (span,) = trace.spans.values()
+    assert span.args == {}
