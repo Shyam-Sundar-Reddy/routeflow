@@ -63,6 +63,7 @@ def track(
     *,
     name: str | None = None,
     redact: Redactor | None = None,
+    capture_args: bool = True,
 ) -> Callable[[F], F]: ...
 
 
@@ -71,6 +72,7 @@ def track(
     *,
     name: str | None = None,
     redact: Redactor | None = None,
+    capture_args: bool = True,
 ) -> F | Callable[[F], F]:
     """Wrap a function so every call becomes a span nested under whatever
     span (or trace root) is currently in scope.
@@ -99,11 +101,20 @@ def track(
     function's own signature) unless `redact` maps a given
     `(param_name, value)` to something safe to store instead — e.g.
     `redact=lambda name, value: "***" if name == "password" else value`.
+
+    Set `capture_args=False` to skip argument capture for this function
+    entirely — for a function whose arguments shouldn't be written to a
+    trace at all (a raw credential, a full request body), not just
+    individually masked.
     """
 
     def decorator(func: F) -> F:
         span_name = name or func.__name__
-        capture = _make_capture(inspect.signature(func), redact)
+        capture = (
+            _make_capture(inspect.signature(func), redact)
+            if capture_args
+            else lambda args, kwargs: {}
+        )
 
         if inspect.iscoroutinefunction(func):
 
