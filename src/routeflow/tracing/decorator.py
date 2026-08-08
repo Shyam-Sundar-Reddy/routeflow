@@ -20,6 +20,11 @@ def track(func: F) -> F:
 
     `span_scope` itself does no I/O, so a plain `with` (not `async with`)
     is correct even inside the async wrapper.
+
+    If the wrapped call raises, the exception is recorded on its span
+    (status becomes "error", with type/message/traceback captured) and
+    then always re-raised unchanged — @track only observes a call, it
+    never alters what the call does or returns.
     """
     span_name = func.__name__
 
