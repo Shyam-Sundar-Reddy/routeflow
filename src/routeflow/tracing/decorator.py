@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import functools
 import inspect
+import warnings
 from collections.abc import Callable
 from typing import TypeVar, overload
 
@@ -106,9 +107,30 @@ def track(
     entirely — for a function whose arguments shouldn't be written to a
     trace at all (a raw credential, a full request body), not just
     individually masked.
+
+    Generator and async-generator functions (`yield`) are not supported
+    yet: calling `func(*args, **kwargs)` on one only *creates* the
+    generator, it doesn't run the body, so the span the current wrappers
+    open would close almost instantly — before a single item is produced —
+    and record a near-zero, meaningless duration. Decorating one issues a
+    `RuntimeWarning` for now rather than failing outright, since the
+    function still works, just without accurate tracing. Proper support
+    (a wrapper that stays open across iteration) is tracked for a later
+    phase.
     """
 
     def decorator(func: F) -> F:
+        if inspect.isgeneratorfunction(func) or inspect.isasyncgenfunction(func):
+            warnings.warn(
+                f"@track on {func.__qualname__!r}: generator/async-generator "
+                "functions aren't properly supported yet — the recorded span "
+                "will close as soon as the generator object is created, not "
+                "when it's actually consumed, so its duration will be "
+                "meaningless.",
+                RuntimeWarning,
+                stacklevel=2,
+            )
+
         span_name = name or func.__name__
         capture = (
             _make_capture(inspect.signature(func), redact)
