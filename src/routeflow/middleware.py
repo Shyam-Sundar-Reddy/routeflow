@@ -51,10 +51,10 @@ class RouteFlowMiddleware:
     ARCHITECTURE.md). Wrapping `scope`/`receive`/`send` directly avoids
     that, at the cost of a bit more boilerplate here.
 
-    The `scope["type"] != "http"` check is a minimal stand-in for now:
     ASGI also delivers "lifespan" (startup/shutdown) and "websocket"
-    scopes, neither of which has a `method`/`path` to build a trace from.
-    Explicit handling and tests for that land in its own commit.
+    scopes to an app — neither has a `method` the way an HTTP scope does
+    (lifespan has no `path` either), so both are passed straight through
+    untouched rather than treated as a traceable request.
     """
 
     def __init__(self, app: ASGIApp) -> None:
