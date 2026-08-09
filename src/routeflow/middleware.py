@@ -12,6 +12,34 @@ Send = Callable[[MutableMapping[str, Any]], Awaitable[None]]
 ASGIApp = Callable[[Scope, Receive, Send], Awaitable[None]]
 
 
+def _route_pattern(scope: Scope) -> str | None:
+    """The route pattern the request matched, e.g. `/orders/{id}` — not
+    the literal path (`/orders/123`), so traces group by endpoint instead
+    of scattering one bucket per id.
+
+    Starlette's router doesn't hand back the matched `Route` object
+    directly on `scope` — it writes `scope["endpoint"]` (the handler) and
+    `scope["router"]` (the `Router` instance) while handling the request,
+    *before* the endpoint runs. So by the time our `await self.app(...)`
+    returns (or raises), both are already there if a route matched, and
+    the route itself is recovered by searching the router for the route
+    whose `.endpoint` is that handler. `None` if nothing matched (a 404)
+    or the app underneath isn't Starlette/FastAPI-based.
+
+    (Checked against the installed Starlette version directly rather than
+    assumed — `scope["route"]`, which older docs/examples reference, does
+    not exist here.)
+    """
+    endpoint = scope.get("endpoint")
+    router = scope.get("router")
+    if endpoint is None or router is None:
+        return None
+    for route in getattr(router, "routes", []):
+        if getattr(route, "endpoint", None) is endpoint:
+            return getattr(route, "path", None)
+    return None
+
+
 class RouteFlowMiddleware:
     """The request boundary: opens a trace when a request comes in and
     closes it when the response is done, no matter what happens in
@@ -44,4 +72,8 @@ class RouteFlowMiddleware:
         try:
             await self.app(scope, receive, send)
         finally:
+            # Read from `finally`, not just the success path — routing
+            # happens before the endpoint runs, so the pattern is known
+            # even when the endpoint itself raised.
+            trace.route_pattern = _route_pattern(scope)
             reset_current_trace(token)
