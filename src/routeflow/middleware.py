@@ -76,4 +76,12 @@ class RouteFlowMiddleware:
             # happens before the endpoint runs, so the pattern is known
             # even when the endpoint itself raised.
             trace.route_pattern = _route_pattern(scope)
+            # Closes the trace: records ended_at (so trace.duration is no
+            # longer None) and derives overall status - "error" if any
+            # span errored, "ok" otherwise. Must also run on the
+            # exception path, same reasoning as the route pattern above:
+            # a failed request still has a real duration worth recording.
+            trace.finish()
             reset_current_trace(token)
+            # No storage yet (Phase 4) - the finished trace is only
+            # reachable here for now, via `trace` itself.
