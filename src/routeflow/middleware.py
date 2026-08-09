@@ -51,12 +51,10 @@ class RouteFlowMiddleware:
     ARCHITECTURE.md). Wrapping `scope`/`receive`/`send` directly avoids
     that, at the cost of a bit more boilerplate here.
 
-    Route pattern capture, trace closing/duration, and error handling land
-    in the following commits — this only opens the trace so far. The
-    `scope["type"] != "http"` check is a minimal stand-in for now: ASGI
-    also delivers "lifespan" (startup/shutdown) and "websocket" scopes,
-    neither of which has a `method`/`path` to build a trace from. Explicit
-    handling and tests for that land in its own commit.
+    The `scope["type"] != "http"` check is a minimal stand-in for now:
+    ASGI also delivers "lifespan" (startup/shutdown) and "websocket"
+    scopes, neither of which has a `method`/`path` to build a trace from.
+    Explicit handling and tests for that land in its own commit.
     """
 
     def __init__(self, app: ASGIApp) -> None:
@@ -71,6 +69,16 @@ class RouteFlowMiddleware:
         token = set_current_trace(trace)
         try:
             await self.app(scope, receive, send)
+        except BaseException as exc:
+            # Only reached for exceptions that escape *everything* below
+            # us, including FastAPI's own exception handlers (an
+            # HTTPException or a registered handler resolves to a normal
+            # response and never gets here — this is genuinely unhandled
+            # failure). Record it on the trace itself, since it may not
+            # have happened inside any @track-ed span at all, then
+            # re-raise unchanged: RouteFlow only observes.
+            trace.record_error(exc)
+            raise
         finally:
             # Read from `finally`, not just the success path — routing
             # happens before the endpoint runs, so the pattern is known

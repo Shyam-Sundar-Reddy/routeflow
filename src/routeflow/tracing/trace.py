@@ -4,7 +4,7 @@ import time
 import uuid
 from dataclasses import dataclass, field
 
-from routeflow.tracing.span import Span
+from routeflow.tracing.span import ErrorInfo, Span
 
 
 def _new_trace_id() -> str:
@@ -32,6 +32,11 @@ class Trace:
     ended_at: float | None = None
     status: str = "running"
     spans: dict[str, Span] = field(default_factory=dict)
+    # Set when an exception escapes all the way to the middleware boundary
+    # — not necessarily the same as any individual span erroring. An
+    # untracked bug (in code never wrapped by @track) still needs to show
+    # up somewhere; this is that somewhere.
+    error: ErrorInfo | None = None
 
     @property
     def duration(self) -> float | None:
@@ -40,14 +45,25 @@ class Trace:
             return None
         return self.ended_at - self.started_at
 
+    def record_error(self, exc: BaseException) -> None:
+        """Attach an exception that escaped to the middleware boundary.
+
+        Mirrors `Span.record_error` — does not raise or suppress anything;
+        the middleware is still responsible for re-raising `exc` itself.
+        """
+        self.error = ErrorInfo.from_exception(exc)
+
     def finish(self) -> None:
         """Close the trace: record its end time and derive an overall
-        status from its spans — "error" if any span errored, "ok"
-        otherwise. Called once, by the middleware, when the response is
-        ready.
+        status — "error" if the trace itself was marked errored
+        (`record_error`) or any span errored, "ok" otherwise. Called once,
+        by the middleware, when the response is ready (or the request
+        failed).
         """
         self.ended_at = time.perf_counter()
-        self.status = "error" if self._any_span_errored() else "ok"
+        self.status = (
+            "error" if self.error is not None or self._any_span_errored() else "ok"
+        )
 
     def _any_span_errored(self) -> bool:
         return any(span.status == "error" for span in self.spans.values())
