@@ -35,14 +35,34 @@ class TraceStore:
         with self._lock:
             self._traces.append(trace)
 
-    def list_traces(self) -> list[Trace]:
-        """A snapshot of all currently stored traces, newest-appended
-        last. A snapshot, not a live view — copied out while holding the
-        lock so a caller iterating the result can't race a concurrent
-        write mutating the same deque underneath it.
+    def list_traces(self, *, route_pattern: str | None = None) -> list[Trace]:
+        """Stored traces, newest first — the order a "recent traces"
+        list in the flow view wants them in, opposite of insertion order.
+
+        A snapshot, not a live view — copied out while holding the lock
+        so a caller iterating the result can't race a concurrent write
+        mutating the same deque underneath it.
+
+        `route_pattern`, when given, filters to traces matching exactly
+        (e.g. `"/orders/{id}"`) — for listing "recent traces for this
+        endpoint" the way the flow view groups them.
         """
         with self._lock:
-            return list(self._traces)
+            snapshot = list(self._traces)
+        snapshot.reverse()
+        if route_pattern is not None:
+            snapshot = [t for t in snapshot if t.route_pattern == route_pattern]
+        return snapshot
+
+    def get(self, trace_id: str) -> Trace | None:
+        """A single trace by id, or `None` if it's not stored — either
+        it never existed, or it aged out of the ring buffer.
+        """
+        with self._lock:
+            for trace in self._traces:
+                if trace.trace_id == trace_id:
+                    return trace
+        return None
 
     def __len__(self) -> int:
         with self._lock:
