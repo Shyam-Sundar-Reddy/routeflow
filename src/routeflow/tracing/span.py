@@ -19,6 +19,9 @@ class LogEntry:
     message: str
     timestamp: float = field(default_factory=time.perf_counter)
 
+    def to_dict(self) -> dict[str, object]:
+        return {"message": self.message, "timestamp": self.timestamp}
+
 
 @dataclass
 class ErrorInfo:
@@ -40,6 +43,9 @@ class ErrorInfo:
                 traceback.format_exception(type(exc), exc, exc.__traceback__)
             ),
         )
+
+    def to_dict(self) -> dict[str, str]:
+        return {"type": self.type, "message": self.message, "traceback": self.traceback}
 
 
 @dataclass
@@ -94,3 +100,25 @@ class Span:
         """`duration` in milliseconds, for display."""
         duration = self.duration
         return None if duration is None else duration * 1000
+
+    def to_dict(self) -> dict[str, object]:
+        """A JSON-serializable snapshot — plain str/float/None/list/dict,
+        never the live objects. `start_time`/`end_time` are raw
+        `perf_counter` readings (meaningful only relative to the parent
+        trace's own `started_at`, included alongside this in
+        `Trace.to_dict`) — `duration_ms` is what's actually useful on its
+        own.
+        """
+        return {
+            "span_id": self.span_id,
+            "trace_id": self.trace_id,
+            "parent_id": self.parent_id,
+            "name": self.name,
+            "start_time": self.start_time,
+            "end_time": self.end_time,
+            "duration_ms": self.duration_ms,
+            "status": self.status,
+            "args": self.args,
+            "logs": [log.to_dict() for log in self.logs],
+            "error": self.error.to_dict() if self.error is not None else None,
+        }

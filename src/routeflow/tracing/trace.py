@@ -85,3 +85,24 @@ class Trace:
             span for span in self.spans.values() if span.parent_id == span_id
         ]
         return sorted(children, key=lambda span: span.start_time)
+
+    def to_dict(self) -> dict[str, object]:
+        """A JSON-serializable snapshot of the whole trace — plain
+        str/float/None/list/dict, never the live `Trace`/`Span` objects.
+        Spans come out as a flat list (already in call order, since
+        `self.spans` is populated in the order spans opened); a consumer
+        rebuilds the tree from each span's `parent_id`, the same way
+        `root_spans`/`children_of` do here.
+        """
+        return {
+            "trace_id": self.trace_id,
+            "method": self.method,
+            "path": self.path,
+            "route_pattern": self.route_pattern,
+            "started_at": self.started_at,
+            "ended_at": self.ended_at,
+            "duration_ms": None if self.duration is None else self.duration * 1000,
+            "status": self.status,
+            "error": self.error.to_dict() if self.error is not None else None,
+            "spans": [span.to_dict() for span in self.spans.values()],
+        }
