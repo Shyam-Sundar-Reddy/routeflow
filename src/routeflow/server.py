@@ -28,6 +28,14 @@ def _get_trace(store: TraceStore):
     return handler
 
 
+def _list_endpoints(store: TraceStore):
+    async def handler(request: Request) -> JSONResponse:
+        stats = store.endpoint_stats()
+        return JSONResponse([s.to_dict() for s in stats])
+
+    return handler
+
+
 def build_server_app(store: TraceStore) -> Starlette:
     """The small standalone app RouteFlow mounts onto the user's own
     FastAPI/Starlette app — serves stored traces over REST (and, once the
@@ -43,5 +51,6 @@ def build_server_app(store: TraceStore) -> Starlette:
         routes=[
             Route("/traces", _list_traces(store)),
             Route("/traces/{trace_id}", _get_trace(store)),
+            Route("/endpoints", _list_endpoints(store)),
         ]
     )
