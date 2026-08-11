@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from routeflow.live import LiveBroadcaster
 from routeflow.middleware import RouteFlowMiddleware
 from routeflow.server import build_server_app
 from routeflow.store import TraceStore
@@ -29,16 +30,23 @@ def RouteFlow(app: _SupportsRouteFlow) -> _SupportsRouteFlow:
         app = FastAPI()
         RouteFlow(app)
 
-    Wires up the request-tracing middleware and the same `TraceStore` it
-    writes to, then mounts the small standalone server that reads from
-    that store at `/__routeflow__` — `app.mount`, not `include_router`,
-    so RouteFlow's own routes get an isolated OpenAPI schema and never
-    show up in the host app's own `/docs`.
+    Wires up the request-tracing middleware, the `TraceStore` it writes
+    to, and a `LiveBroadcaster` it notifies as each trace finishes, then
+    mounts the small standalone server that reads from that store (and
+    pushes over that broadcaster) at `/__routeflow__` — `app.mount`, not
+    `include_router`, so RouteFlow's own routes get an isolated OpenAPI
+    schema and never show up in the host app's own `/docs`.
 
     Returns `app` so this can be chained inline where that's convenient,
     e.g. `app = RouteFlow(FastAPI())`.
     """
     store = TraceStore()
-    app.add_middleware(RouteFlowMiddleware, store=store, exclude_prefix=MOUNT_PATH)
-    app.mount(MOUNT_PATH, build_server_app(store))
+    broadcaster = LiveBroadcaster()
+    app.add_middleware(
+        RouteFlowMiddleware,
+        store=store,
+        exclude_prefix=MOUNT_PATH,
+        on_trace=broadcaster.broadcast_trace,
+    )
+    app.mount(MOUNT_PATH, build_server_app(store, broadcaster))
     return app

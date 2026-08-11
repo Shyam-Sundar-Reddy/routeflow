@@ -63,8 +63,15 @@ class RouteFlowMiddleware:
         app: ASGIApp,
         store: TraceStore | None = None,
         exclude_prefix: str | None = None,
+        on_trace: Callable[[Trace], Awaitable[None]] | None = None,
     ) -> None:
         self.app = app
+        # Deliberately just "an async callable that takes a Trace" rather
+        # than importing LiveBroadcaster/WebSocket here — the middleware
+        # has no business knowing traces get pushed over a websocket at
+        # all, only that something may want to know when one finishes.
+        # `RouteFlow(app)` passes `LiveBroadcaster.broadcast_trace`.
+        self.on_trace = on_trace
         # Defaults to a private store so the middleware is still usable
         # on its own (as most of the existing test suite does) without
         # every caller needing to wire one up. RouteFlow(app) always
@@ -115,3 +122,5 @@ class RouteFlowMiddleware:
             trace.finish()
             reset_current_trace(token)
             self.store.add(trace)
+            if self.on_trace is not None:
+                await self.on_trace(trace)
