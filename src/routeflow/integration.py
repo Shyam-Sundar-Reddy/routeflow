@@ -48,5 +48,12 @@ def RouteFlow(app: _SupportsRouteFlow) -> _SupportsRouteFlow:
         exclude_prefix=MOUNT_PATH,
         on_trace=broadcaster.broadcast_trace,
     )
+    # Verified against a real FastAPI app, not just assumed from how
+    # `mount` is described: the mounted sub-app genuinely works (its
+    # routes respond) but is absent from `app.openapi()`'s generated
+    # schema and from `/docs` — FastAPI's schema generation only walks
+    # `APIRoute`s it owns directly, so a `Mount`ed sub-application (this
+    # one's a plain Starlette app, see server.py) is invisible to it
+    # without any extra effort here.
     app.mount(MOUNT_PATH, build_server_app(store, broadcaster))
     return app
