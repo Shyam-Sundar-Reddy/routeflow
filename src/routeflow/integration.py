@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Protocol
 
 from routeflow.live import LiveBroadcaster
@@ -11,6 +12,9 @@ from routeflow.store import TraceStore
 # obviously "not part of your API" to anyone who spots it in a request
 # log — same idea as Django's /__debug__/.
 MOUNT_PATH = "/__routeflow__"
+
+_ENV_VAR = "ROUTEFLOW_ENABLED"
+_FALSY = {"0", "false", "no", "off"}
 
 
 class _SupportsRouteFlow(Protocol):
@@ -24,11 +28,26 @@ class _SupportsRouteFlow(Protocol):
     def mount(self, path: str, app: object, name: str | None = None) -> None: ...
 
 
-def RouteFlow(app: _SupportsRouteFlow) -> _SupportsRouteFlow:
+def RouteFlow(
+    app: _SupportsRouteFlow, *, enabled: bool | None = None
+) -> _SupportsRouteFlow:
     """Install RouteFlow on a FastAPI (or plain Starlette) app in one call:
 
         app = FastAPI()
         RouteFlow(app)
+
+    On by default — this is a dev tool, and "add one line, it just
+    works" is the whole point. But traces can include captured function
+    arguments and full stack traces, so this must never stay on
+    silently if the same code ships to production. The escape hatch:
+    `ROUTEFLOW_ENABLED=0` (also accepts "false"/"no"/"off") in the
+    environment disables it without touching code — set that in
+    production and leave `RouteFlow(app)` in place safely. `enabled=`
+    overrides the environment either way, for a caller that wants to
+    decide in code instead (e.g. `enabled=settings.debug`).
+
+    When disabled, this is a true no-op: no middleware installed, no
+    route mounted, `app` handed back completely untouched.
 
     Wires up the request-tracing middleware, the `TraceStore` it writes
     to, and a `LiveBroadcaster` it notifies as each trace finishes, then
@@ -40,6 +59,12 @@ def RouteFlow(app: _SupportsRouteFlow) -> _SupportsRouteFlow:
     Returns `app` so this can be chained inline where that's convenient,
     e.g. `app = RouteFlow(FastAPI())`.
     """
+    if enabled is None:
+        env_value = os.environ.get(_ENV_VAR)
+        enabled = env_value is None or env_value.strip().lower() not in _FALSY
+    if not enabled:
+        return app
+
     store = TraceStore()
     broadcaster = LiveBroadcaster()
     app.add_middleware(
