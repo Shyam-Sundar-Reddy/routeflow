@@ -24,6 +24,18 @@ class LiveBroadcaster:
         self._clients.discard(websocket)
 
     async def broadcast_trace(self, trace: Trace) -> None:
-        """Push one finished trace to every currently connected client."""
+        """Push one finished trace to every currently connected client.
+
+        A stale connection (tab closed, network dropped) can make
+        `send_json` raise before `_live`'s own receive loop has noticed
+        the disconnect — that must not stop the remaining clients from
+        getting this trace, so each send is isolated and a client that
+        fails is dropped from the registry immediately rather than
+        waiting for its own disconnect handling to catch up.
+        """
+        payload = trace.to_dict()
         for websocket in list(self._clients):
-            await websocket.send_json(trace.to_dict())
+            try:
+                await websocket.send_json(payload)
+            except Exception:
+                self._clients.discard(websocket)
