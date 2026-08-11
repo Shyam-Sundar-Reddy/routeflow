@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable, MutableMapping
 from typing import Any
 
+from routeflow.store import TraceStore
 from routeflow.tracing import Trace
 from routeflow.tracing.context import reset_current_trace, set_current_trace
 
@@ -57,11 +58,33 @@ class RouteFlowMiddleware:
     untouched rather than treated as a traceable request.
     """
 
-    def __init__(self, app: ASGIApp) -> None:
+    def __init__(
+        self,
+        app: ASGIApp,
+        store: TraceStore | None = None,
+        exclude_prefix: str | None = None,
+    ) -> None:
         self.app = app
+        # Defaults to a private store so the middleware is still usable
+        # on its own (as most of the existing test suite does) without
+        # every caller needing to wire one up. RouteFlow(app) always
+        # passes the same store it mounts the server onto, so traces
+        # recorded here are actually reachable from outside the process.
+        self.store = store if store is not None else TraceStore()
+        # This middleware wraps the *entire* app, including whatever
+        # RouteFlow itself mounts onto it (see integration.py) — without
+        # this, a browser polling GET /__routeflow__/traces would trace
+        # itself, piling up as a bogus "unmatched" endpoint (confirmed:
+        # this was actually happening before `exclude_prefix` existed).
+        # `RouteFlow(app)` passes its own mount path here; direct use of
+        # the middleware without mounting anything leaves it unset.
+        self.exclude_prefix = exclude_prefix
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http":
+        if scope["type"] != "http" or (
+            self.exclude_prefix is not None
+            and scope["path"].startswith(self.exclude_prefix)
+        ):
             await self.app(scope, receive, send)
             return
 
@@ -91,5 +114,4 @@ class RouteFlowMiddleware:
             # a failed request still has a real duration worth recording.
             trace.finish()
             reset_current_trace(token)
-            # No storage yet (Phase 4) - the finished trace is only
-            # reachable here for now, via `trace` itself.
+            self.store.add(trace)
