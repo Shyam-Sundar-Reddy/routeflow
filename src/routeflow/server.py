@@ -3,7 +3,8 @@ from __future__ import annotations
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route
+from starlette.routing import Route, WebSocketRoute
+from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from routeflow.store import TraceStore
 
@@ -36,6 +37,29 @@ def _list_endpoints(store: TraceStore):
     return handler
 
 
+def _live(store: TraceStore):
+    async def handler(websocket: WebSocket) -> None:
+        """Held open for as long as a flow-view tab is watching. Doesn't
+        push anything yet — that's `broadcast_trace` in the next commit,
+        which needs a registry of connections like this one to send to.
+        For now this just completes the handshake and stays open until
+        the client disconnects, so the connection lifecycle itself
+        (accept → hold → clean disconnect) is right before anything is
+        layered on top of it.
+        """
+        await websocket.accept()
+        try:
+            while True:
+                # Nothing meaningful expected from the client — this is
+                # purely what keeps the coroutine (and thus the
+                # connection) alive between server-initiated pushes.
+                await websocket.receive_text()
+        except WebSocketDisconnect:
+            pass  # a closed tab is a normal event here, not an error
+
+    return handler
+
+
 def build_server_app(store: TraceStore) -> Starlette:
     """The small standalone app RouteFlow mounts onto the user's own
     FastAPI/Starlette app — serves stored traces over REST (and, once the
@@ -52,5 +76,6 @@ def build_server_app(store: TraceStore) -> Starlette:
             Route("/traces", _list_traces(store)),
             Route("/traces/{trace_id}", _get_trace(store)),
             Route("/endpoints", _list_endpoints(store)),
+            WebSocketRoute("/live", _live(store)),
         ]
     )
