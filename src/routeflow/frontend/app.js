@@ -221,7 +221,17 @@ function layoutSpans(spans) {
   return { positions, width, height };
 }
 
+// The trace currently rendered in the graph — the detail panel reads
+// span.start_time offsets against `currentTrace.started_at`, so it needs
+// the trace, not just the one span that was clicked.
+let currentTrace = null;
+let selectedSpanId = null;
+
 function renderGraph(trace) {
+  currentTrace = trace;
+  selectedSpanId = null;
+  document.getElementById("detail").hidden = true;
+
   document.getElementById("canvas-placeholder").hidden = true;
   document.getElementById("canvas-scroll").hidden = false;
   const graph = document.getElementById("graph");
@@ -263,10 +273,12 @@ function renderGraph(trace) {
   for (const { span, x, y } of positions.values()) {
     const node = document.createElement("div");
     node.className = `node ${span.status === "error" ? "error" : "ok"}`;
+    node.dataset.spanId = span.span_id;
     node.style.left = `${x}px`;
     node.style.top = `${y}px`;
     node.style.width = `${NODE_W}px`;
     node.style.height = `${NODE_H}px`;
+    node.addEventListener("click", () => selectSpan(span));
 
     const bar = document.createElement("span");
     bar.className = "bar";
@@ -284,6 +296,111 @@ function renderGraph(trace) {
 
     node.append(bar, inner);
     graph.appendChild(node);
+  }
+}
+
+function selectSpan(span) {
+  selectedSpanId = span.span_id;
+  for (const node of document.querySelectorAll(".node")) {
+    node.classList.toggle("selected", node.dataset.spanId === span.span_id);
+  }
+  renderDetail(span);
+}
+
+function renderDetail(span) {
+  document.getElementById("detail").hidden = false;
+  document.getElementById("detail-name").textContent = span.name;
+
+  const parent = span.parent_id
+    ? currentTrace.spans.find((s) => s.span_id === span.parent_id)
+    : null;
+  // Offsets relative to the trace's own start (not span.start_time raw —
+  // that's a perf_counter reading, meaningless without this subtraction;
+  // see Trace.to_dict's docstring on the Python side).
+  const startedAtMs = Math.round(
+    (span.start_time - currentTrace.started_at) * 1000
+  );
+
+  const metrics = document.getElementById("detail-metrics");
+  metrics.innerHTML = "";
+  const rows = [
+    ["Status", span.status === "error" ? "✕ error" : "ok"],
+    ["Started at", `${startedAtMs}ms`],
+    ["Duration", span.duration_ms === null ? "—" : `${Math.round(span.duration_ms)}ms`],
+    ["Parent span", parent ? parent.name : "— (root)"],
+  ];
+  for (const [label, value] of rows) {
+    const row = document.createElement("div");
+    row.className = "metric-row";
+    const labelEl = document.createElement("span");
+    labelEl.textContent = label;
+    const valueEl = document.createElement("span");
+    valueEl.textContent = value;
+    row.append(labelEl, valueEl);
+    metrics.appendChild(row);
+  }
+
+  const argsContainer = document.getElementById("detail-args");
+  argsContainer.innerHTML = "";
+  const argEntries = Object.entries(span.args);
+  if (argEntries.length === 0) {
+    const none = document.createElement("p");
+    none.className = "placeholder";
+    none.textContent = "None captured.";
+    argsContainer.appendChild(none);
+  } else {
+    for (const [name, value] of argEntries) {
+      const row = document.createElement("div");
+      row.className = "arg-row";
+      const nameEl = document.createElement("span");
+      nameEl.className = "arg-name";
+      nameEl.textContent = `${name}=`;
+      const valueEl = document.createElement("span");
+      valueEl.textContent = value;
+      row.append(nameEl, valueEl);
+      argsContainer.appendChild(row);
+    }
+  }
+
+  const logsContainer = document.getElementById("detail-logs");
+  logsContainer.innerHTML = "";
+  if (span.logs.length === 0) {
+    const none = document.createElement("p");
+    none.className = "placeholder";
+    none.textContent = "No log lines captured.";
+    logsContainer.appendChild(none);
+  } else {
+    for (const log of span.logs) {
+      const offsetMs = Math.round((log.timestamp - span.start_time) * 1000);
+      const row = document.createElement("div");
+      row.className = "log-line";
+      const t = document.createElement("span");
+      t.className = "t";
+      t.textContent = `+${offsetMs}ms`;
+      const msg = document.createElement("span");
+      msg.textContent = log.message;
+      row.append(t, msg);
+      logsContainer.appendChild(row);
+    }
+  }
+
+  const errorSection = document.getElementById("detail-error-section");
+  if (span.error === null) {
+    errorSection.hidden = true;
+  } else {
+    errorSection.hidden = false;
+    const errorBox = document.getElementById("detail-error");
+    errorBox.innerHTML = "";
+    const type = document.createElement("div");
+    type.className = "type";
+    type.textContent = span.error.type;
+    const msg = document.createElement("div");
+    msg.className = "msg";
+    msg.textContent = span.error.message;
+    const tb = document.createElement("div");
+    tb.className = "trace";
+    tb.textContent = span.error.traceback;
+    errorBox.append(type, msg, tb);
   }
 }
 

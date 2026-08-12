@@ -31,6 +31,29 @@
           <div id="graph" class="graph"></div>
         </div>
       </main>
+
+      <aside id="detail" class="detail" hidden>
+        <div class="detail-section">
+          <h4>Selected span</h4>
+          <div class="detail-title"><span id="detail-name" class="fn"></span></div>
+          <div id="detail-metrics"></div>
+        </div>
+
+        <div class="detail-section">
+          <h4>Arguments</h4>
+          <div id="detail-args"></div>
+        </div>
+
+        <div class="detail-section">
+          <h4>Logs</h4>
+          <div id="detail-logs"></div>
+        </div>
+
+        <div id="detail-error-section" class="detail-section" hidden>
+          <h4>Exception</h4>
+          <div id="detail-error" class="error-box"></div>
+        </div>
+      </aside>
     </div>
   </div>
   <script src="app.js"></script>
