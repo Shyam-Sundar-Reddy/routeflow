@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Route, WebSocketRoute
+from starlette.routing import Mount, Route, WebSocketRoute
+from starlette.staticfiles import StaticFiles
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from routeflow.live import LiveBroadcaster
 from routeflow.store import TraceStore
+
+# The flow view's HTML/CSS/JS, shipped inside the package itself — no
+# separate frontend build/install step for a dev-only tool that's meant
+# to be "add one line, it just works."
+FRONTEND_DIR = Path(__file__).parent / "frontend"
 
 
 def _list_traces(store: TraceStore):
@@ -80,5 +88,10 @@ def build_server_app(store: TraceStore, broadcaster: LiveBroadcaster) -> Starlet
             Route("/traces/{trace_id}", _get_trace(store)),
             Route("/endpoints", _list_endpoints(store)),
             WebSocketRoute("/live", _live(broadcaster)),
+            # Under /app, not the sub-app's root — keeps the REST/WS
+            # surface above at short, stable paths instead of colliding
+            # with (or being shadowed by) the static file tree.
+            # html=True serves index.html for /app and /app/ alike.
+            Mount("/app", app=StaticFiles(directory=FRONTEND_DIR, html=True)),
         ]
     )
