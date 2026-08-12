@@ -8,6 +8,18 @@
 // app was installed at.
 const API_BASE = window.location.pathname.replace(/app\/?$/, "");
 
+// The host app's own root — everything in the URL *before* RouteFlow's
+// mount point (see integration.py's MOUNT_PATH). Not just "/": a host
+// app can itself be mounted under a prefix, so this is derived from the
+// current URL rather than assumed, the same reasoning as API_BASE above.
+const HOST_ROOT = (() => {
+  const marker = "/__routeflow__/";
+  const index = window.location.pathname.indexOf(marker);
+  return index === -1 ? "/" : window.location.pathname.slice(0, index + 1);
+})();
+
+document.getElementById("docs-tab").href = HOST_ROOT + "docs";
+
 async function fetchJSON(path) {
   const response = await fetch(API_BASE + path);
   if (!response.ok) {
