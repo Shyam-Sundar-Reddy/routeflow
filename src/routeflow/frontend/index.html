@@ -7,8 +7,23 @@
   <link rel="stylesheet" href="app.css" />
 </head>
 <body>
-  <div id="app">
-    <p class="placeholder">RouteFlow is running. The flow view is under construction.</p>
+  <div class="app">
+    <header class="topbar">
+      <div class="wordmark"><span class="dot"></span>routeflow</div>
+    </header>
+
+    <div class="body">
+      <aside class="sidebar">
+        <h3>Endpoints</h3>
+        <div id="endpoint-list" class="endpoint-list">
+          <p class="placeholder">Loading endpoints…</p>
+        </div>
+      </aside>
+
+      <main class="canvas-wrap">
+        <p class="placeholder">Select an endpoint to see its traces.</p>
+      </main>
+    </div>
   </div>
   <script src="app.js"></script>
 </body>

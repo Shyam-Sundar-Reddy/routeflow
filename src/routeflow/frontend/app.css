@@ -1,11 +1,19 @@
-/* Real theming (light/dark tokens, the actual sidebar/canvas/detail
- * layout) lands in later Phase 6 commits — this is just enough to prove
- * static assets are actually being served, not a copy-paste error, and
- * to stop the placeholder rendering as unstyled black-on-white.
+/* Full light/dark theming lands in its own Phase 6 commit — this is the
+ * dark-only shell for now, styled enough that the layout itself (topbar
+ * + sidebar + canvas) is legible while the rest of the UI is built out.
  */
 
 :root {
   color-scheme: dark;
+  --bg: #0f1216;
+  --panel: #171b21;
+  --panel-raised: #1d222a;
+  --border: rgba(255, 255, 255, 0.09);
+  --text: #e7eaee;
+  --muted: #8b93a1;
+  --get: #4a9fe0;
+  --post: #e0954a;
+  --err: #e2554f;
 }
 
 * {
@@ -14,16 +22,142 @@
 
 body {
   margin: 0;
-  min-height: 100vh;
+  background: var(--bg);
+  color: var(--text);
+  font-family: ui-sans-serif, "Inter", "Segoe UI", system-ui, sans-serif;
+  font-size: 14px;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  height: 52px;
+  flex: none;
+  padding: 0 18px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+}
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 700;
+}
+
+.wordmark .dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--post);
+}
+
+.body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+
+.sidebar {
+  width: 280px;
+  flex: none;
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  overflow-y: auto;
+}
+
+.sidebar h3 {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 16px 14px 8px;
+  font-weight: 600;
+}
+
+.canvas-wrap {
+  flex: 1;
+  min-width: 0;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: #0f1216;
-  color: #e7eaee;
-  font-family: ui-sans-serif, "Inter", "Segoe UI", system-ui, sans-serif;
 }
 
 .placeholder {
-  color: #8b93a1;
-  font-size: 14px;
+  color: var(--muted);
+  font-size: 13px;
+  padding: 0 14px;
+}
+
+.endpoint-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.endpoint {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 14px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+
+.endpoint:hover {
+  background: var(--panel-raised);
+}
+
+.endpoint.selected {
+  background: var(--panel-raised);
+  border-left-color: var(--post);
+}
+
+.endpoint-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.method {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.method.get {
+  color: var(--get);
+  background: color-mix(in srgb, var(--get) 16%, transparent);
+}
+
+.method.post,
+.method.put,
+.method.patch,
+.method.delete {
+  color: var(--post);
+  background: color-mix(in srgb, var(--post) 16%, transparent);
+}
+
+.endpoint-path {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.endpoint-stats {
+  font-size: 11px;
+  color: var(--muted);
+  display: flex;
+  gap: 10px;
+  padding-left: 2px;
+}
+
+.endpoint-stats .err-rate {
+  color: var(--err);
 }
