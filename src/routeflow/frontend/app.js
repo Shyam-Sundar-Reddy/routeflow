@@ -20,6 +20,38 @@ const HOST_ROOT = (() => {
 
 document.getElementById("docs-tab").href = HOST_ROOT + "docs";
 
+// "system" (follow the OS, the default) / "light" / "dark" — cycled by
+// the topbar button, persisted so a reload doesn't lose the choice.
+// Applying it as [data-theme] on <html> is what the CSS's
+// :root[data-theme="..."] blocks key off; "system" means *no* attribute
+// at all, letting the plain prefers-color-scheme block take over.
+const THEME_STORAGE_KEY = "routeflow-theme";
+const THEME_CYCLE = ["system", "light", "dark"];
+const THEME_LABEL = { system: "◐", light: "☀", dark: "☾" };
+
+function applyTheme(theme) {
+  if (theme === "system") {
+    delete document.documentElement.dataset.theme;
+  } else {
+    document.documentElement.dataset.theme = theme;
+  }
+  document.getElementById("theme-toggle").textContent = THEME_LABEL[theme];
+}
+
+function initTheme() {
+  const stored = localStorage.getItem(THEME_STORAGE_KEY);
+  applyTheme(THEME_CYCLE.includes(stored) ? stored : "system");
+
+  document.getElementById("theme-toggle").addEventListener("click", () => {
+    const current = localStorage.getItem(THEME_STORAGE_KEY) || "system";
+    const next = THEME_CYCLE[(THEME_CYCLE.indexOf(current) + 1) % THEME_CYCLE.length];
+    localStorage.setItem(THEME_STORAGE_KEY, next);
+    applyTheme(next);
+  });
+}
+
+initTheme();
+
 async function fetchJSON(path) {
   const response = await fetch(API_BASE + path);
   if (!response.ok) {

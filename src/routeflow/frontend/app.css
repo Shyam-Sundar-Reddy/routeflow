@@ -1,9 +1,39 @@
-/* Full light/dark theming lands in its own Phase 6 commit — this is the
- * dark-only shell for now, styled enough that the layout itself (topbar
- * + sidebar + canvas) is legible while the rest of the UI is built out.
+/* Light is the token default; dark is layered on in two places that
+ * must stay in sync: the prefers-color-scheme block (follows the OS)
+ * and the [data-theme="dark"] block (the manual toggle below wins over
+ * the OS either way). Every color a component uses comes from one of
+ * these tokens — never a literal hex outside this block — so a new
+ * component gets both themes for free.
  */
 
 :root {
+  color-scheme: light dark;
+  --bg: #f4f5f3;
+  --panel: #ffffff;
+  --panel-raised: #fafaf8;
+  --border: rgba(15, 18, 22, 0.1);
+  --text: #14171c;
+  --muted: #5c6470;
+  --get: #1c6fb0;
+  --post: #b5661c;
+  --err: #c23b3b;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0f1216;
+    --panel: #171b21;
+    --panel-raised: #1d222a;
+    --border: rgba(255, 255, 255, 0.09);
+    --text: #e7eaee;
+    --muted: #8b93a1;
+    --get: #4a9fe0;
+    --post: #e0954a;
+    --err: #e2554f;
+  }
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
   --bg: #0f1216;
   --panel: #171b21;
@@ -14,6 +44,19 @@
   --get: #4a9fe0;
   --post: #e0954a;
   --err: #e2554f;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f5f3;
+  --panel: #ffffff;
+  --panel-raised: #fafaf8;
+  --border: rgba(15, 18, 22, 0.1);
+  --text: #14171c;
+  --muted: #5c6470;
+  --get: #1c6fb0;
+  --post: #b5661c;
+  --err: #c23b3b;
 }
 
 * {
@@ -84,6 +127,24 @@ body {
   color: var(--text);
   font-weight: 600;
   border-bottom-color: var(--post);
+}
+
+.theme-toggle {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--muted);
+  width: 30px;
+  height: 30px;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  color: var(--text);
+  background: var(--panel-raised);
 }
 
 .body {
