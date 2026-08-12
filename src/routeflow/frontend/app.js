@@ -454,4 +454,33 @@ async function loadEndpoints() {
   }
 }
 
+/**
+ * Opens the WebSocket the server pushes a finished trace's full JSON
+ * over as it lands (see LiveBroadcaster.broadcast_trace). The payload
+ * itself isn't consumed here — its arrival is just the signal to
+ * re-fetch: that keeps the endpoint sidebar's counts/p95/error-rate and
+ * whatever trace list is currently open both trivially correct, rather
+ * than hand-patching two different pieces of derived state from one raw
+ * trace. Reconnect-on-drop and a visible "disconnected" state are their
+ * own later commit — this is deliberately just the happy path.
+ */
+function connectLiveSocket() {
+  const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  const socket = new WebSocket(`${wsProtocol}//${window.location.host}${API_BASE}live`);
+
+  socket.addEventListener("message", () => {
+    loadEndpoints();
+    if (selectedRoutePattern) {
+      loadTraces(selectedRoutePattern);
+    }
+  });
+
+  socket.addEventListener("error", (err) => {
+    console.error("routeflow: live socket error", err);
+  });
+
+  return socket;
+}
+
 loadEndpoints();
+connectLiveSocket();
