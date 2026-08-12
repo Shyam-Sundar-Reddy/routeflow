@@ -590,9 +590,25 @@ async function loadEndpoints() {
  * trace. Reconnect-on-drop and a visible "disconnected" state are their
  * own later commit — this is deliberately just the happy path.
  */
+const RECONNECT_DELAY_MS = 2000;
+
+function setLiveStatus(status) {
+  const indicator = document.getElementById("live-indicator");
+  indicator.classList.remove("connecting", "connected", "disconnected");
+  indicator.classList.add(status);
+  indicator.textContent =
+    status === "connected"
+      ? "● live"
+      : status === "disconnected"
+        ? "○ disconnected — retrying…"
+        : "connecting…";
+}
+
 function connectLiveSocket() {
   const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
   const socket = new WebSocket(`${wsProtocol}//${window.location.host}${API_BASE}live`);
+
+  socket.addEventListener("open", () => setLiveStatus("connected"));
 
   socket.addEventListener("message", () => {
     loadEndpoints();
@@ -603,6 +619,14 @@ function connectLiveSocket() {
 
   socket.addEventListener("error", (err) => {
     console.error("routeflow: live socket error", err);
+  });
+
+  socket.addEventListener("close", () => {
+    setLiveStatus("disconnected");
+    // The dev server restarting (--reload, a crash, a manual stop) is
+    // the routine case here, not a rare edge - retry rather than leaving
+    // the tab permanently stuck the moment the server bounces once.
+    setTimeout(connectLiveSocket, RECONNECT_DELAY_MS);
   });
 
   return socket;

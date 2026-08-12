@@ -129,8 +129,22 @@ body {
   border-bottom-color: var(--post);
 }
 
-.theme-toggle {
+.live-indicator {
   margin-left: auto;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.live-indicator.connected {
+  color: var(--get);
+}
+
+.live-indicator.disconnected {
+  color: var(--err);
+}
+
+.theme-toggle {
+  margin-left: 14px;
   background: none;
   border: 1px solid var(--border);
   border-radius: 6px;
