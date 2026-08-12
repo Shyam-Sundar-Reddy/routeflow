@@ -108,6 +108,10 @@ function renderTraceList(traces) {
     const row = document.createElement("div");
     row.className = "trace";
     row.dataset.traceId = trace.trace_id;
+    if (trace.trace_id === selectedTraceId) {
+      row.classList.add("selected");
+    }
+    row.addEventListener("click", () => selectTrace(trace.trace_id));
 
     const status = document.createElement("span");
     status.className = `status-chip ${trace.status}`;
@@ -155,6 +159,166 @@ async function loadTraces(routePattern) {
     message.textContent = "Couldn't load traces.";
     container.appendChild(message);
     console.error("routeflow: failed to load traces", err);
+  }
+}
+
+// The one trace currently shown in the graph, if any.
+let selectedTraceId = null;
+
+// Layout constants for the node graph — one screen-pixel size, shared by
+// both the DOM node divs and the SVG edges connecting them, so the two
+// stay aligned without either side re-deriving the other's geometry.
+const NODE_W = 170;
+const NODE_H = 56;
+const COL_GAP = 24;
+const ROW_GAP = 48;
+const MARGIN = 20;
+
+/**
+ * Positions each span as a (x, y, width, height) box: depth (via
+ * parent_id) becomes the row, spans within a depth are laid out
+ * left-to-right in the order they appear (already call order — see
+ * Trace.to_dict). Not a full tidy-tree layout (children aren't centered
+ * under their specific parent), but every edge is still drawn correctly
+ * regardless, so the tree structure itself is always accurate even when
+ * the geometry is just "good enough" for now.
+ */
+function layoutSpans(spans) {
+  const byId = new Map(spans.map((span) => [span.span_id, span]));
+  const depthOf = new Map();
+
+  function depthOfSpan(span) {
+    if (depthOf.has(span.span_id)) return depthOf.get(span.span_id);
+    const parent = span.parent_id ? byId.get(span.parent_id) : null;
+    const depth = parent ? depthOfSpan(parent) + 1 : 0;
+    depthOf.set(span.span_id, depth);
+    return depth;
+  }
+
+  const rows = [];
+  for (const span of spans) {
+    const depth = depthOfSpan(span);
+    if (!rows[depth]) rows[depth] = [];
+    rows[depth].push(span);
+  }
+
+  const positions = new Map();
+  let maxCols = 0;
+  rows.forEach((row, rowIndex) => {
+    maxCols = Math.max(maxCols, row.length);
+    row.forEach((span, colIndex) => {
+      positions.set(span.span_id, {
+        span,
+        x: MARGIN + colIndex * (NODE_W + COL_GAP),
+        y: MARGIN + rowIndex * (NODE_H + ROW_GAP),
+      });
+    });
+  });
+
+  const width = MARGIN * 2 + maxCols * NODE_W + Math.max(0, maxCols - 1) * COL_GAP;
+  const height =
+    MARGIN * 2 + rows.length * NODE_H + Math.max(0, rows.length - 1) * ROW_GAP;
+  return { positions, width, height };
+}
+
+function renderGraph(trace) {
+  document.getElementById("canvas-placeholder").hidden = true;
+  document.getElementById("canvas-scroll").hidden = false;
+  const graph = document.getElementById("graph");
+  graph.innerHTML = "";
+
+  if (trace.spans.length === 0) {
+    graph.style.width = "";
+    graph.style.height = "";
+    const empty = document.createElement("p");
+    empty.className = "placeholder";
+    empty.textContent = "No @track-ed calls recorded for this request.";
+    graph.appendChild(empty);
+    return;
+  }
+
+  const { positions, width, height } = layoutSpans(trace.spans);
+  graph.style.width = `${width}px`;
+  graph.style.height = `${height}px`;
+
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(svgNS, "svg");
+  svg.setAttribute("width", String(width));
+  svg.setAttribute("height", String(height));
+
+  for (const { span, x, y } of positions.values()) {
+    const parentPos = span.parent_id ? positions.get(span.parent_id) : null;
+    if (!parentPos) continue;
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("x1", String(parentPos.x + NODE_W / 2));
+    line.setAttribute("y1", String(parentPos.y + NODE_H));
+    line.setAttribute("x2", String(x + NODE_W / 2));
+    line.setAttribute("y2", String(y));
+    line.setAttribute("stroke", "currentColor");
+    line.setAttribute("stroke-opacity", "0.4");
+    svg.appendChild(line);
+  }
+  graph.appendChild(svg);
+
+  for (const { span, x, y } of positions.values()) {
+    const node = document.createElement("div");
+    node.className = `node ${span.status === "error" ? "error" : "ok"}`;
+    node.style.left = `${x}px`;
+    node.style.top = `${y}px`;
+    node.style.width = `${NODE_W}px`;
+    node.style.height = `${NODE_H}px`;
+
+    const bar = document.createElement("span");
+    bar.className = "bar";
+
+    const inner = document.createElement("div");
+    inner.className = "inner";
+    const name = document.createElement("div");
+    name.className = "name";
+    name.textContent = span.name;
+    const sub = document.createElement("div");
+    sub.className = "sub";
+    sub.textContent =
+      span.duration_ms === null ? "running…" : `${Math.round(span.duration_ms)}ms`;
+    inner.append(name, sub);
+
+    node.append(bar, inner);
+    graph.appendChild(node);
+  }
+}
+
+function selectTrace(traceId) {
+  selectedTraceId = traceId;
+
+  for (const row of document.querySelectorAll(".trace")) {
+    row.classList.toggle("selected", row.dataset.traceId === traceId);
+  }
+
+  loadTraceDetail(traceId);
+}
+
+async function loadTraceDetail(traceId) {
+  const graph = document.getElementById("graph");
+  document.getElementById("canvas-placeholder").hidden = true;
+  document.getElementById("canvas-scroll").hidden = false;
+  graph.innerHTML = "";
+  const loading = document.createElement("p");
+  loading.className = "placeholder";
+  loading.textContent = "Loading trace…";
+  graph.appendChild(loading);
+
+  try {
+    const trace = await fetchJSON(`traces/${encodeURIComponent(traceId)}`);
+    if (traceId !== selectedTraceId) return; // superseded by a newer click
+    renderGraph(trace);
+  } catch (err) {
+    if (traceId !== selectedTraceId) return;
+    graph.innerHTML = "";
+    const message = document.createElement("p");
+    message.className = "placeholder";
+    message.textContent = "Couldn't load this trace.";
+    graph.appendChild(message);
+    console.error("routeflow: failed to load trace", err);
   }
 }
 
