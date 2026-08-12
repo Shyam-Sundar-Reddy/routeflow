@@ -16,6 +16,10 @@ async function fetchJSON(path) {
   return response.json();
 }
 
+// The one route pattern currently selected in the sidebar, if any — the
+// trace list and (in a later commit) the node graph both key off this.
+let selectedRoutePattern = null;
+
 function renderEndpointList(endpoints) {
   const container = document.getElementById("endpoint-list");
   container.innerHTML = "";
@@ -31,6 +35,11 @@ function renderEndpointList(endpoints) {
   for (const endpoint of endpoints) {
     const row = document.createElement("div");
     row.className = "endpoint";
+    row.dataset.routePattern = endpoint.route_pattern;
+    if (endpoint.route_pattern === selectedRoutePattern) {
+      row.classList.add("selected");
+    }
+    row.addEventListener("click", () => selectEndpoint(endpoint.route_pattern));
 
     const top = document.createElement("div");
     top.className = "endpoint-top";
@@ -63,6 +72,89 @@ function renderEndpointList(endpoints) {
 
     row.append(top, stats);
     container.appendChild(row);
+  }
+}
+
+function selectEndpoint(routePattern) {
+  selectedRoutePattern = routePattern;
+
+  // Reflect the selection in the already-rendered rows rather than
+  // re-fetching /endpoints — the list of endpoints hasn't changed, only
+  // which one is selected.
+  for (const row of document.querySelectorAll(".endpoint")) {
+    row.classList.toggle("selected", row.dataset.routePattern === routePattern);
+  }
+
+  document.getElementById("trace-list-heading").textContent =
+    `Recent traces · ${routePattern}`;
+  document.getElementById("trace-list-section").hidden = false;
+
+  loadTraces(routePattern);
+}
+
+function renderTraceList(traces) {
+  const container = document.getElementById("trace-list");
+  container.innerHTML = "";
+
+  if (traces.length === 0) {
+    const empty = document.createElement("p");
+    empty.className = "placeholder";
+    empty.textContent = "No traces for this endpoint yet.";
+    container.appendChild(empty);
+    return;
+  }
+
+  for (const trace of traces) {
+    const row = document.createElement("div");
+    row.className = "trace";
+    row.dataset.traceId = trace.trace_id;
+
+    const status = document.createElement("span");
+    status.className = `status-chip ${trace.status}`;
+    status.textContent = trace.status.toUpperCase();
+
+    const id = document.createElement("span");
+    id.className = "trace-id";
+    // Short id for scanability in a list — the full id is still on
+    // trace.trace_id for whatever reads it next (the detail panel, in a
+    // later commit).
+    id.textContent = `#${trace.trace_id.slice(0, 8)}`;
+
+    const meta = document.createElement("span");
+    meta.className = "trace-meta";
+    meta.textContent =
+      trace.duration_ms === null ? "—" : `${Math.round(trace.duration_ms)}ms`;
+
+    row.append(status, id, meta);
+    container.appendChild(row);
+  }
+}
+
+async function loadTraces(routePattern) {
+  const container = document.getElementById("trace-list");
+  container.innerHTML = "";
+  const loading = document.createElement("p");
+  loading.className = "placeholder";
+  loading.textContent = "Loading traces…";
+  container.appendChild(loading);
+
+  try {
+    const traces = await fetchJSON(
+      `traces?route_pattern=${encodeURIComponent(routePattern)}`
+    );
+    // The user may have clicked a different endpoint while this request
+    // was in flight — don't let a slow, stale response clobber a newer
+    // selection's traces.
+    if (routePattern !== selectedRoutePattern) return;
+    renderTraceList(traces);
+  } catch (err) {
+    if (routePattern !== selectedRoutePattern) return;
+    container.innerHTML = "";
+    const message = document.createElement("p");
+    message.className = "placeholder";
+    message.textContent = "Couldn't load traces.";
+    container.appendChild(message);
+    console.error("routeflow: failed to load traces", err);
   }
 }
 

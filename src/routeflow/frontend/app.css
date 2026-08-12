@@ -161,3 +161,60 @@ body {
 .endpoint-stats .err-rate {
   color: var(--err);
 }
+
+.trace-list-section {
+  border-top: 1px solid var(--border);
+  margin-top: 8px;
+}
+
+.trace-list {
+  display: flex;
+  flex-direction: column;
+}
+
+.trace {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-left: 2px solid transparent;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 11.5px;
+  cursor: pointer;
+}
+
+.trace:hover {
+  background: var(--panel-raised);
+}
+
+.trace.selected {
+  background: var(--panel-raised);
+  border-left-color: var(--err);
+}
+
+.status-chip {
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.status-chip.ok {
+  color: var(--get);
+  background: color-mix(in srgb, var(--get) 16%, transparent);
+}
+
+.status-chip.error {
+  color: var(--err);
+  background: color-mix(in srgb, var(--err) 16%, transparent);
+}
+
+.trace-id {
+  color: var(--muted);
+}
+
+.trace-meta {
+  color: var(--muted);
+  text-align: right;
+}
