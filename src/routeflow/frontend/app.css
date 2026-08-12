@@ -174,16 +174,69 @@ body {
   flex: 1;
   min-width: 0;
   display: flex;
-  align-items: center;
-  justify-content: center;
   position: relative;
 }
 
+.canvas-wrap > .placeholder {
+  margin: auto;
+}
+
+.canvas-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
 .canvas-scroll {
-  width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
   padding: 24px;
+}
+
+.strip {
+  flex: none;
+  border-top: 1px solid var(--border);
+  padding: 10px 20px 14px;
+}
+
+.strip h4 {
+  margin: 0 0 8px;
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.strip-scroll {
+  overflow-x: auto;
+}
+
+.strip-scroll svg {
+  display: block;
+  width: 100%;
+  height: 96px;
+}
+
+.timeline-bar {
+  cursor: pointer;
+}
+
+.timeline-bar.ok {
+  fill: color-mix(in srgb, var(--get) 30%, transparent);
+  stroke: var(--get);
+}
+
+.timeline-bar.error {
+  fill: color-mix(in srgb, var(--err) 30%, transparent);
+  stroke: var(--err);
+}
+
+.timeline-bar.selected {
+  stroke-width: 2.5;
 }
 
 .graph {

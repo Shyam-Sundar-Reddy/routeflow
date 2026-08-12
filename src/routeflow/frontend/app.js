@@ -219,15 +219,12 @@ const ROW_GAP = 48;
 const MARGIN = 20;
 
 /**
- * Positions each span as a (x, y, width, height) box: depth (via
- * parent_id) becomes the row, spans within a depth are laid out
- * left-to-right in the order they appear (already call order — see
- * Trace.to_dict). Not a full tidy-tree layout (children aren't centered
- * under their specific parent), but every edge is still drawn correctly
- * regardless, so the tree structure itself is always accurate even when
- * the geometry is just "good enough" for now.
+ * Depth of each span via its parent_id chain (root spans are depth 0) —
+ * shared by the node graph's row layout and the timeline strip's row
+ * layout below, so "which row is this span in" is answered the same way
+ * in both places rather than two implementations drifting apart.
  */
-function layoutSpans(spans) {
+function computeDepths(spans) {
   const byId = new Map(spans.map((span) => [span.span_id, span]));
   const depthOf = new Map();
 
@@ -239,9 +236,25 @@ function layoutSpans(spans) {
     return depth;
   }
 
+  for (const span of spans) depthOfSpan(span);
+  return depthOf;
+}
+
+/**
+ * Positions each span as a (x, y, width, height) box: depth becomes the
+ * row, spans within a depth are laid out left-to-right in the order they
+ * appear (already call order — see Trace.to_dict). Not a full tidy-tree
+ * layout (children aren't centered under their specific parent), but
+ * every edge is still drawn correctly regardless, so the tree structure
+ * itself is always accurate even when the geometry is just "good enough"
+ * for now.
+ */
+function layoutSpans(spans) {
+  const depthOf = computeDepths(spans);
+
   const rows = [];
   for (const span of spans) {
-    const depth = depthOfSpan(span);
+    const depth = depthOf.get(span.span_id);
     if (!rows[depth]) rows[depth] = [];
     rows[depth].push(span);
   }
@@ -277,9 +290,11 @@ function renderGraph(trace) {
   document.getElementById("detail").hidden = true;
 
   document.getElementById("canvas-placeholder").hidden = true;
-  document.getElementById("canvas-scroll").hidden = false;
+  document.getElementById("canvas-body").hidden = false;
   const graph = document.getElementById("graph");
   graph.innerHTML = "";
+
+  renderTimeline(trace);
 
   if (trace.spans.length === 0) {
     graph.style.width = "";
@@ -343,10 +358,77 @@ function renderGraph(trace) {
   }
 }
 
+// Fixed "virtual" width for the timeline's SVG viewBox — real pixel
+// width is whatever the browser lays the SVG out at (CSS: width: 100%),
+// scaling this coordinate space to fit. Avoids needing to measure the
+// container's actual pixel width in JS just to compute a scale factor.
+const TIMELINE_VIRTUAL_WIDTH = 1000;
+const TIMELINE_ROW_H = 18;
+const TIMELINE_ROW_GAP = 6;
+const TIMELINE_MARGIN = 8;
+
+/**
+ * The flamegraph-style strip: every span as a horizontal bar positioned
+ * by when it ran and how long it took, relative to the trace's own
+ * start — literally the same (offset, duration) pair the detail panel
+ * shows as text, drawn as geometry instead. Synced to whatever trace
+ * `renderGraph` just rendered, and clicking a bar drives the exact same
+ * `selectSpan` the node graph does, so either view can be the one the
+ * user actually clicks.
+ */
+function renderTimeline(trace) {
+  const svgNS = "http://www.w3.org/2000/svg";
+  const svg = document.getElementById("timeline-svg");
+  svg.innerHTML = "";
+
+  if (trace.spans.length === 0 || trace.duration_ms === null) {
+    return;
+  }
+
+  const depthOf = computeDepths(trace.spans);
+  const rowCount = Math.max(...depthOf.values()) + 1;
+  const height = TIMELINE_MARGIN * 2 + rowCount * TIMELINE_ROW_H +
+    Math.max(0, rowCount - 1) * TIMELINE_ROW_GAP;
+
+  svg.setAttribute("viewBox", `0 0 ${TIMELINE_VIRTUAL_WIDTH} ${height}`);
+
+  // A span can outlast the trace's own recorded duration by a hair (the
+  // trace closes as soon as the response is ready, spans close as their
+  // calls return) - guard against a negative/zero denominator rather
+  // than let a bar's width go negative or divide by zero.
+  const totalMs = Math.max(trace.duration_ms, 1);
+  const usableWidth = TIMELINE_VIRTUAL_WIDTH - TIMELINE_MARGIN * 2;
+  const pxPerMs = usableWidth / totalMs;
+
+  for (const span of trace.spans) {
+    const offsetMs = (span.start_time - trace.started_at) * 1000;
+    const durationMs = span.duration_ms ?? 0;
+    const depth = depthOf.get(span.span_id);
+
+    const rect = document.createElementNS(svgNS, "rect");
+    rect.setAttribute("class", `timeline-bar ${span.status === "error" ? "error" : "ok"}`);
+    rect.dataset.spanId = span.span_id;
+    rect.setAttribute("x", String(TIMELINE_MARGIN + offsetMs * pxPerMs));
+    rect.setAttribute("y", String(TIMELINE_MARGIN + depth * (TIMELINE_ROW_H + TIMELINE_ROW_GAP)));
+    // A floor on width - an instant (0ms) call would otherwise render as
+    // a zero-width, unclickable, invisible rect.
+    rect.setAttribute("width", String(Math.max(durationMs * pxPerMs, 3)));
+    rect.setAttribute("height", String(TIMELINE_ROW_H));
+    rect.setAttribute("rx", "2");
+    rect.addEventListener("click", () => selectSpan(span));
+
+    const title = document.createElementNS(svgNS, "title");
+    title.textContent = `${span.name} — ${Math.round(durationMs)}ms`;
+    rect.appendChild(title);
+
+    svg.appendChild(rect);
+  }
+}
+
 function selectSpan(span) {
   selectedSpanId = span.span_id;
-  for (const node of document.querySelectorAll(".node")) {
-    node.classList.toggle("selected", node.dataset.spanId === span.span_id);
+  for (const el of document.querySelectorAll(".node, .timeline-bar")) {
+    el.classList.toggle("selected", el.dataset.spanId === span.span_id);
   }
   renderDetail(span);
 }
@@ -461,7 +543,7 @@ function selectTrace(traceId) {
 async function loadTraceDetail(traceId) {
   const graph = document.getElementById("graph");
   document.getElementById("canvas-placeholder").hidden = true;
-  document.getElementById("canvas-scroll").hidden = false;
+  document.getElementById("canvas-body").hidden = false;
   graph.innerHTML = "";
   const loading = document.createElement("p");
   loading.className = "placeholder";
