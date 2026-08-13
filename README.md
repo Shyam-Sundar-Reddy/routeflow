@@ -1,5 +1,8 @@
 # routeflow
 
+[![Tests](https://github.com/Shyam-Sundar-Reddy/routeflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Shyam-Sundar-Reddy/routeflow/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/routeflow.svg)](https://pypi.org/project/routeflow/)
+
 Real-time execution flow visualization for FastAPI applications.
 
 FastAPI documents the *contract* of an API — routes, params, response
