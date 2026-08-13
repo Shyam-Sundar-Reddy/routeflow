@@ -1,32 +1,41 @@
-# Architecture — tracing core (Phase 1)
+# Architecture
 
-This documents `src/routeflow/tracing/`: the span/trace data model and the
-`ContextVar` plumbing everything else in RouteFlow builds on. No FastAPI
-integration lives here yet — that's the `@track` decorator (Phase 2) and the
-ASGI middleware (Phase 3), both of which sit on top of this module without
-changing it.
+How a request becomes a node graph, end to end. Written from the actual
+source, not the original design — where the two disagreed, the code won.
 
 ## Module layout
 
 ```
-src/routeflow/tracing/
-├── span.py        Span, LogEntry, ErrorInfo
-├── trace.py        Trace
-├── context.py       ContextVar accessors (get/set/reset current trace/span)
-└── lifecycle.py      open_span, close_span, span_scope
+src/routeflow/
+├── tracing/
+│   ├── span.py        Span, LogEntry, ErrorInfo
+│   ├── trace.py         Trace
+│   ├── context.py        ContextVar accessors (get/set/reset current trace/span)
+│   ├── lifecycle.py       open_span, close_span, span_scope
+│   └── decorator.py       @track — the public instrumentation API
+├── middleware.py    RouteFlowMiddleware — the request boundary
+├── store.py          TraceStore — in-memory ring buffer + aggregate stats
+├── live.py             LiveBroadcaster — pushes finished traces over WebSocket
+├── server.py           the mounted REST/WebSocket sub-app
+├── integration.py       RouteFlow(app) — wires everything above together
+└── frontend/             the flow-view UI (vanilla HTML/CSS/JS, no build step)
 ```
 
 ## The data model
 
 **`Span`** — one traced call. `name`, `trace_id`, `parent_id` (`None` for a
 root span), a generated `span_id`, `start_time`/`end_time`, `status`
-(`"running"` → `"ok"` or `"error"`), `logs`, and an optional `error`.
+(`"running"` → `"ok"` or `"error"`), `logs`, `args` (captured call
+arguments, already stringified), and an optional `error`. `to_dict()`
+gives a plain JSON-serializable snapshot — never the live object.
 
 **`Trace`** — everything captured for one request. `method`, `path`,
 `route_pattern`, a generated `trace_id`, `started_at`/`ended_at`, `status`,
-and `spans: dict[span_id, Span]` — a **flat** collection. There is no tree
+an optional `error` (see "the middleware" below), and
+`spans: dict[span_id, Span]` — a **flat** collection. There is no tree
 object; the tree is derived on demand from `Span.parent_id` via
-`Trace.root_spans()` and `Trace.children_of(span_id)`.
+`Trace.root_spans()` and `Trace.children_of(span_id)`. `to_dict()` mirrors
+`Span`'s — the whole trace as plain data, spans included as a flat list.
 
 Both timestamps use `time.perf_counter()`, not `time.monotonic()`. On this
 project's Windows dev machine, `monotonic()` is backed by `GetTickCount64()`
@@ -51,10 +60,9 @@ without stepping on each other. Two properties this depends on, verified in
   A child task doesn't see changes its parent makes afterward, and the
   parent doesn't see what the child sets. This is the propagation gap that
   `BackgroundTasks` / fire-and-forget tasks fall into if the context isn't
-  copied across explicitly — not yet handled here, since nothing in Phase 1
-  creates background tasks.
+  copied across explicitly — not handled anywhere yet (see "not here yet").
 
-## Lifecycle
+## Lifecycle (`lifecycle.py`)
 
 `open_span(name)` reads the current trace and current span, creates a
 `Span` parented to whichever span is currently in scope (or root, if none),
@@ -78,21 +86,153 @@ ancestor span** as `"error"`, each with its own captured `ErrorInfo` — not
 just the span that originally raised. A sibling span that already finished
 successfully before the failure is unaffected. This is what produces the
 "raised in `stripe_api_call` → propagated to `charge_card` → propagated to
-`handle_order`" chain the Flow tab is meant to show.
+`handle_order`" chain the flow view shows.
 
 `Trace.finish()` closes the trace and derives its overall status —
-`"error"` if any of its spans ended up `"error"`, `"ok"` otherwise. Nothing
-in Phase 1 calls this automatically; it's meant to be called once, by the
-middleware, when the response is ready.
+`"error"` if the trace itself was marked errored (see the middleware) or
+any of its spans ended up `"error"`, `"ok"` otherwise.
+
+## The decorator (`decorator.py`)
+
+`@track` is a thin wrapper around `span_scope`, made safe to put on
+arbitrary user functions:
+
+- **Sync/async dispatch decided once, at decoration time**
+  (`inspect.iscoroutinefunction`), not per call — a separate wrapper for
+  each, since calling an `async def` the sync way only creates a coroutine
+  object without running it.
+- **Both `@track` and `@track(name=..., redact=..., capture_args=...)`**
+  work, via a `func is None` check on the outer call.
+- **Argument capture** binds `(*args, **kwargs)` to parameter names through
+  the function's own `inspect.signature`, so a span records `amount=100`
+  rather than an unlabeled positional list. `redact(name, value)` can mask
+  or replace a specific argument before it's stringified; `capture_args=False`
+  skips capture for the whole function (a raw credential, a full request
+  body).
+- **Generators are not supported yet** — calling a generator function only
+  creates the generator object, it doesn't run the body, so the span would
+  close almost instantly with a meaningless duration. Decorating one issues
+  a `RuntimeWarning` rather than failing outright.
+
+## The middleware (`middleware.py`)
+
+`RouteFlowMiddleware` is the request boundary — pure ASGI
+(`scope`/`receive`/`send`), not Starlette's `BaseHTTPMiddleware`, which
+buffers responses in ways that break streaming and can interfere with
+`BackgroundTasks`.
+
+Per HTTP request: open a `Trace`, set it as the current trace, run the
+wrapped app, and in a `finally` — so this runs whether the request
+succeeded or raised — derive the route pattern, close the trace, reset the
+`ContextVar`, store the trace, and notify `on_trace` if one was given.
+
+A few things worth knowing about *why* it's built this way:
+
+- **Route pattern recovery is indirect.** The installed Starlette version
+  doesn't put the matched `Route` object on `scope` — it writes
+  `scope["endpoint"]` (the handler) and `scope["router"]`. The pattern
+  (`/orders/{id}`, not `/orders/123`) is recovered by searching the
+  router's routes for the one whose `.endpoint` matches. This was verified
+  against the actual installed Starlette source, not assumed from older
+  docs referencing `scope["route"]`, which doesn't exist here.
+- **Exceptions are caught at the boundary too, not just in spans.** An
+  exception that reaches here escaped *everything* below, including
+  FastAPI's own exception handlers — genuinely unhandled failure. It's
+  recorded on the `Trace` itself (`trace.record_error`), since it may not
+  have happened inside any `@track`-ed span at all, then always re-raised
+  unchanged.
+- **`exclude_prefix` stops RouteFlow from tracing itself.** Without it, a
+  browser polling the flow view's own `GET /__routeflow__/traces` would
+  generate a trace for that request too, piling up as a bogus endpoint —
+  confirmed happening before this existed. `RouteFlow(app)` passes its own
+  mount path here.
+- **`store`/`on_trace` are optional, injected dependencies**, not imports.
+  The middleware doesn't know a `LiveBroadcaster` or WebSocket exists —
+  `on_trace` is just "an async callable that takes a `Trace`."
+  `RouteFlow(app)` wires the real ones in; used directly, the middleware
+  defaults to a private `TraceStore()` so it's still usable standalone.
+
+## Storage (`store.py`)
+
+`TraceStore` is an in-memory `deque(maxlen=...)` — the oldest trace is
+evicted automatically once full, no eviction logic to get wrong. Guarded by
+a `threading.Lock`: a single asyncio event loop wouldn't need it (a
+`deque.append` can't be interrupted mid-operation between `await` points),
+but FastAPI runs plain `def` route handlers in a threadpool, so a write can
+genuinely happen on a different OS thread at the same instant as another.
+
+Reads (`list_traces`, `get`, `endpoint_stats`) copy out from under the lock
+before returning, so a caller can't race a concurrent write mutating the
+same deque underneath it. `endpoint_stats()` groups whatever's currently in
+the buffer by `(method, route_pattern)` and computes request count, error
+rate, and p95 latency fresh each call — there's no separate running total,
+so a stat's window is implicitly "however far back the buffer currently
+reaches." p95 uses linear-interpolation percentile (matching `numpy`'s
+default) rather than `statistics.quantiles`, which refuses a single-value
+sample — something a lightly-used endpoint will very often be.
+
+## The server (`server.py`, `live.py`)
+
+A small, standalone Starlette app — deliberately separate from the host's
+own router rather than routes merged in via `include_router`. Mounting it
+(`app.mount(...)`, in `integration.py`) gives it an isolated OpenAPI schema
+for free: the host's `/docs` never learns these routes exist, and there's
+no risk of colliding with a path the host app defines itself. Verified
+against a real FastAPI app, not just assumed from how `mount` is
+documented.
+
+Routes: `GET /traces` (optionally filtered by `route_pattern`),
+`GET /traces/{id}`, `GET /endpoints` (aggregate stats), `WS /live`, and
+`/app/*` — the flow-view frontend itself, served as static files
+(`StaticFiles(..., html=True)`), shipped inside the package so there's no
+separate frontend build/install step.
+
+`LiveBroadcaster` tracks connected `/live` WebSocket clients in a `set`
+(more than one flow-view tab can be open) and pushes each finished trace to
+all of them via `broadcast_trace`. A stale connection failing `send_json`
+is caught and dropped immediately, isolated per-client, so one dead socket
+can't stop the trace from reaching everyone else.
+
+## Wiring it together (`integration.py`)
+
+`RouteFlow(app)` is the entire public install surface: creates a
+`TraceStore` and a `LiveBroadcaster`, installs the middleware with both
+wired in (plus its own mount path, to exclude itself), and mounts the
+server app at `/__routeflow__`.
+
+**On by default, with an explicit off switch.** This is a dev tool — "add
+one line, it just works" is the point — but traces can include captured
+arguments and full stack traces, so it must never stay on silently in
+production. `ROUTEFLOW_ENABLED=0` (also `false`/`no`/`off`) in the
+environment disables it completely: no middleware installed, no route
+mounted, `app` handed back untouched. `enabled=` overrides the environment
+either way, for a caller that wants to decide in code
+(`enabled=settings.debug`).
+
+## The frontend (`frontend/`)
+
+Vanilla HTML/CSS/JS, no framework, no build step — it's served as-is
+directly from the package, so it has to run in a browser exactly as
+written. `app.js` derives its own API base and the host app's root from
+`window.location.pathname` rather than hardcoding `/__routeflow__` twice,
+so it keeps working regardless of what mount path a given install actually
+used.
+
+Sidebar (`GET /endpoints`) → trace list for the selected endpoint
+(`GET /traces?route_pattern=...`) → node graph for the selected trace,
+built from that trace's flat span list the same way `Trace.children_of`
+does. A `WebSocket` connection to `/live` appends new traces as they
+finish, with reconnect-on-drop and a small connection-status indicator.
+Theme is token-based CSS custom properties — `prefers-color-scheme` for the
+OS default, a `[data-theme]` attribute for the manual toggle, persisted in
+`localStorage`.
 
 ## What's deliberately not here yet
 
-- No decorator — `open_span`/`span_scope` are called directly in tests.
-  `@track` (Phase 2) is a thin sync/async-aware wrapper around
-  `span_scope` plus argument capture.
-- No request boundary — nothing here sets the *first* trace on a request.
-  The ASGI middleware (Phase 3) is what calls `set_current_trace` at
-  request start and `Trace.finish()` at response time, and is what reads
-  `scope["route"]` for `route_pattern`.
-- No storage or serialization — traces live only as Python objects for
-  now. The ring buffer and JSON serialization are Phase 4.
+- **Context propagation across `asyncio.create_task()` / `BackgroundTasks`**
+  isn't handled — a fire-and-forget task started inside a traced request
+  won't automatically attribute its own `@track`ed calls back to that
+  request's trace, for the reason described above under "context
+  propagation."
+- **No packaging/release yet** — not published to PyPI; install from
+  source for now.
