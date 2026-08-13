@@ -3,10 +3,15 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.1.0] - Unreleased
+## [0.2.0] - Unreleased
 
-First release. Everything needed to trace a FastAPI request and see it as
-a live node graph, end to end.
+First real release. Everything needed to trace a FastAPI request and see
+it as a live node graph, end to end.
+
+> **Note:** `0.1.0` exists on PyPI but is a stale artifact of the initial
+> project scaffold, published before any of the functionality below was
+> built — PyPI never allows reusing a version number once published, so
+> this release starts at `0.2.0` instead. Don't install `0.1.0`.
 
 ### Added
 
