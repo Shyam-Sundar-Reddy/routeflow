@@ -93,6 +93,16 @@ set in the environment disables it completely — no middleware installed, no
 route mounted, your app handed back untouched. `RouteFlow(app, enabled=False)`
 does the same from code, e.g. `enabled=settings.debug`.
 
+## Try it
+
+[`examples/demo_app.py`](./examples/demo_app.py) is a small shop app with a
+nested call tree and one request that fails on purpose, so there's
+something worth looking at the first time you open the flow view:
+
+```bash
+uv run --with fastapi --with uvicorn python examples/demo_app.py
+```
+
 ## How it works
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the mechanism: the
