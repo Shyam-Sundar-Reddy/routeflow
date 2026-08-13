@@ -12,10 +12,16 @@ license = { text = "MIT" }
 dependencies = [
     "typer>=0.12",
     "rich>=13.0",
+    # The middleware only needs FastAPI/Starlette structurally (see
+    # integration.py's Protocol) and never imports either - but the
+    # mounted server (server.py, live.py) is a real Starlette app with a
+    # WebSocket, so starlette itself is a genuine runtime dependency, not
+    # just a dev/test one.
+    "starlette>=0.37",
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "starlette>=0.37", "httpx>=0.27", "fastapi>=0.110"]
+dev = ["pytest>=8", "httpx>=0.27", "fastapi>=0.110"]
 
 [project.scripts]
 routeflow = "routeflow.cli:app"
