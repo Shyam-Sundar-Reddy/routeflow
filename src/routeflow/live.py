@@ -37,5 +37,5 @@ class LiveBroadcaster:
         for websocket in list(self._clients):
             try:
                 await websocket.send_json(payload)
-            except Exception:
+            except Exception:  # noqa: BLE001 - one dead socket must not skip the rest
                 self._clients.discard(websocket)

@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 import inspect
 
+import pytest
+
 from routeflow.tracing import Trace, track
 
 
@@ -108,11 +110,8 @@ def test_sync_exception_is_recorded_and_still_raised(trace: Trace) -> None:
     def boom() -> None:
         raise ValueError("sync boom")
 
-    try:
+    with pytest.raises(ValueError, match="sync boom"):
         boom()
-        assert False, "boom() should have raised"
-    except ValueError as exc:
-        assert str(exc) == "sync boom"
 
     (span,) = trace.spans.values()
     assert span.status == "error"
@@ -126,11 +125,8 @@ def test_async_exception_is_recorded_and_still_raised(trace: Trace) -> None:
     async def aboom() -> None:
         raise ValueError("async boom")
 
-    try:
+    with pytest.raises(ValueError, match="async boom"):
         asyncio.run(aboom())
-        assert False, "aboom() should have raised"
-    except ValueError as exc:
-        assert str(exc) == "async boom"
 
     (span,) = trace.spans.values()
     assert span.status == "error"
@@ -156,11 +152,8 @@ def test_exception_marks_every_ancestor_span_errored(trace: Trace) -> None:
     def handle_order() -> None:
         charge_card()
 
-    try:
+    with pytest.raises(TimeoutError):
         handle_order()
-        assert False, "handle_order() should have raised"
-    except TimeoutError:
-        pass
 
     assert {span.status for span in trace.spans.values()} == {"error"}
     assert {span.error.type for span in trace.spans.values()} == {"TimeoutError"}

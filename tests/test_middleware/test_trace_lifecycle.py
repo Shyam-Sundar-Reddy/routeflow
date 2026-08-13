@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+
 from starlette.applications import Starlette
 
 from routeflow.tracing import Trace

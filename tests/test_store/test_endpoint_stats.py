@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from routeflow.store import TraceStore, UNMATCHED_ROUTE
+from routeflow.store import UNMATCHED_ROUTE, TraceStore
 from routeflow.tracing import Trace
 
 
