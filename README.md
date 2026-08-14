@@ -98,6 +98,20 @@ set in the environment disables it completely — no middleware installed, no
 route mounted, your app handed back untouched. `RouteFlow(app, enabled=False)`
 does the same from code, e.g. `enabled=settings.debug`.
 
+## How much history it keeps
+
+Every request is traced — there's no sampling yet. `max_traces` controls how
+many *finished* traces stay in memory at once (default 500):
+
+```python
+RouteFlow(app, max_traces=200)
+```
+
+It's a ring buffer, not a hard cutoff: once full, the oldest trace is
+dropped as each new one lands, so the flow view always shows your most
+recent activity rather than erroring out or growing without bound on a
+long-running dev server.
+
 ## Try it
 
 [`examples/demo_app.py`](./examples/demo_app.py) is a small shop app with a

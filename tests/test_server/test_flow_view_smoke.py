@@ -161,4 +161,5 @@ def test_routeflows_own_requests_are_never_traced(
 
     endpoints = do_request(app, "GET", "/__routeflow__/endpoints").json()
     traced_paths = {e["route_pattern"] for e in endpoints}
-    assert not any(p and (p.startswith("/flow") or p.startswith("/__routeflow__")) for p in traced_paths)
+    own_prefixes = ("/flow", "/__routeflow__")
+    assert not any(p and p.startswith(own_prefixes) for p in traced_paths)

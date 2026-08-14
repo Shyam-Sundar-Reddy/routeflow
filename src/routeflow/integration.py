@@ -8,7 +8,7 @@ from starlette.staticfiles import StaticFiles
 from routeflow.live import LiveBroadcaster
 from routeflow.middleware import RouteFlowMiddleware
 from routeflow.server import FRONTEND_DIR, build_server_app
-from routeflow.store import TraceStore
+from routeflow.store import DEFAULT_MAX_TRACES, TraceStore
 
 # Deliberately unlikely to collide with a real app's own routes, and
 # obviously "not part of your API" to anyone who spots it in a request
@@ -41,7 +41,10 @@ class _SupportsRouteFlow(Protocol):
 
 
 def RouteFlow(
-    app: _SupportsRouteFlow, *, enabled: bool | None = None
+    app: _SupportsRouteFlow,
+    *,
+    enabled: bool | None = None,
+    max_traces: int = DEFAULT_MAX_TRACES,
 ) -> _SupportsRouteFlow:
     """Install RouteFlow on a FastAPI (or plain Starlette) app in one call:
 
@@ -60,6 +63,13 @@ def RouteFlow(
 
     When disabled, this is a true no-op: no middleware installed, no
     route mounted, `app` handed back completely untouched.
+
+    Every request is traced — there's no sampling (trace 1 in N, or X%)
+    yet, only this: `max_traces` caps how many *finished* traces stay in
+    memory at once (default 500). It's a ring buffer, not a hard cutoff -
+    once full, the oldest trace is dropped as each new one lands, so the
+    flow view always shows the most recent activity rather than erroring
+    out or silently growing without bound on a long-running dev server.
 
     Wires up the request-tracing middleware, the `TraceStore` it writes
     to, and a `LiveBroadcaster` it notifies as each trace finishes, then
@@ -80,7 +90,7 @@ def RouteFlow(
     if not enabled:
         return app
 
-    store = TraceStore()
+    store = TraceStore(maxlen=max_traces)
     broadcaster = LiveBroadcaster()
     app.add_middleware(
         RouteFlowMiddleware,
