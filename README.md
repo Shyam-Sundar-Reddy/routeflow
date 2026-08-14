@@ -18,8 +18,7 @@ and rendered live as an interactive node graph in a tab next to your
 Swagger docs.
 
 **Status:** functional for local development — the tracer, middleware,
-in-memory store, and flow-view UI all work end to end. Not yet published to
-PyPI; install from source for now (see below).
+in-memory store, and flow-view UI all work end to end.
 
 ## Quickstart
 
@@ -47,7 +46,10 @@ def create_order(amount: int):
     return {"amount": amount, "status": "ok"}
 ```
 
-Run it (`uvicorn myapp:app`), hit `POST /orders`, then open:
+Run it — `uvicorn myapp:app`, or `uvicorn[standard]` / `pip install
+websockets` if you only have plain `uvicorn`; the flow view's live updates
+need a WebSocket implementation that plain `uvicorn` doesn't include, and
+silently can't connect without one — hit `POST /orders`, then open:
 
 ```
 http://127.0.0.1:8000/__routeflow__/app/
@@ -103,8 +105,14 @@ nested call tree and one request that fails on purpose, so there's
 something worth looking at the first time you open the flow view:
 
 ```bash
-uv run --with fastapi --with uvicorn python examples/demo_app.py
+uv run --with fastapi --with "uvicorn[standard]" python examples/demo_app.py
 ```
+
+For something closer to a real production call tree — service/repository/
+gateway/client layers, concurrent `asyncio.gather` fan-out, argument
+redaction, a deterministic failure and a flaky one — see
+[`examples/production_demo.py`](./examples/production_demo.py) (same run
+command, different filename).
 
 ## How it works
 
