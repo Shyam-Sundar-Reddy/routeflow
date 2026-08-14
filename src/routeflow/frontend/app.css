@@ -227,12 +227,75 @@ body {
 
 .strip-scroll {
   overflow-x: auto;
+  overflow-y: auto;
+  /* A trace with many concurrent branches needs more rows than one
+   * without (see packTimelineRows) - a fixed height here squeezed every
+   * trace into the same box regardless, so a busier trace's bars just
+   * got proportionally thinner instead of the strip getting taller.
+   * renderTimeline sets the real height in px to match actual row count;
+   * this is only a ceiling so a very deep trace scrolls instead of
+   * pushing the rest of the page down. */
+  max-height: 220px;
 }
 
 .strip-scroll svg {
   display: block;
   width: 100%;
-  height: 96px;
+}
+
+.legend {
+  flex: none;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 20px 14px;
+  border-top: 1px solid var(--border);
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.legend-swatch {
+  width: 9px;
+  height: 9px;
+  border-radius: 2px;
+  flex: none;
+}
+
+.legend-swatch.ok {
+  background: var(--get);
+}
+
+.legend-swatch.error {
+  background: var(--err);
+}
+
+.legend-badge {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.legend-mono {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: var(--post);
+  font-weight: 700;
 }
 
 .timeline-bar {
@@ -432,6 +495,35 @@ body {
   letter-spacing: 0.08em;
   color: var(--muted);
   font-weight: 600;
+}
+
+.detail-section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-section-head h4 {
+  margin: 0;
+}
+
+.detail-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  margin-bottom: 10px;
+  background: none;
+  border: none;
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.detail-close:hover {
+  color: var(--text);
+  background: var(--panel-raised);
 }
 
 .detail-title .fn {

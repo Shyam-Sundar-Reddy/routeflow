@@ -52,7 +52,7 @@ need a WebSocket implementation that plain `uvicorn` doesn't include, and
 silently can't connect without one — hit `POST /orders`, then open:
 
 ```
-http://127.0.0.1:8000/__routeflow__/app/
+http://127.0.0.1:8000/flow/
 ```
 
 That's the flow view — pick an endpoint in the sidebar, pick a trace, and

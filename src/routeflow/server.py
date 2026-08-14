@@ -5,8 +5,7 @@ from pathlib import Path
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
-from starlette.routing import Mount, Route, WebSocketRoute
-from starlette.staticfiles import StaticFiles
+from starlette.routing import Route, WebSocketRoute
 from starlette.websockets import WebSocket, WebSocketDisconnect
 
 from routeflow.live import LiveBroadcaster
@@ -73,14 +72,16 @@ def _live(broadcaster: LiveBroadcaster):
 
 def build_server_app(store: TraceStore, broadcaster: LiveBroadcaster) -> Starlette:
     """The small standalone app RouteFlow mounts onto the user's own
-    FastAPI/Starlette app — serves stored traces over REST (and, once the
-    WebSocket lands in a later commit, live updates too).
+    FastAPI/Starlette app — serves stored traces over REST and live
+    updates over WebSocket.
 
     Deliberately a separate Starlette app rather than routes merged into
-    the host's own router: mounting it (`app.mount(...)`, landing in its
-    own commit) gives it an isolated OpenAPI schema for free — the host's
-    `/docs` never learns these routes exist — and there's no risk of a
-    path collision with whatever the host app itself defines.
+    the host's own router: mounting it (`app.mount(...)`) gives it an
+    isolated OpenAPI schema for free — the host's `/docs` never learns
+    these routes exist. Kept under the collision-safe `/__routeflow__`
+    prefix (see integration.py's MOUNT_PATH) - the flow-view UI itself
+    is a *separate* mount, at bare `/flow`, so it isn't built here (see
+    integration.py).
     """
     return Starlette(
         routes=[
@@ -88,10 +89,5 @@ def build_server_app(store: TraceStore, broadcaster: LiveBroadcaster) -> Starlet
             Route("/traces/{trace_id}", _get_trace(store)),
             Route("/endpoints", _list_endpoints(store)),
             WebSocketRoute("/live", _live(broadcaster)),
-            # Under /app, not the sub-app's root — keeps the REST/WS
-            # surface above at short, stable paths instead of colliding
-            # with (or being shadowed by) the static file tree.
-            # html=True serves index.html for /app and /app/ alike.
-            Mount("/app", app=StaticFiles(directory=FRONTEND_DIR, html=True)),
         ]
     )

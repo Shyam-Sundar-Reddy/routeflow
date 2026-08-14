@@ -12,7 +12,7 @@ error looks like in the flow view):
 
 ...and open the flow view:
 
-    http://127.0.0.1:8000/__routeflow__/app/
+    http://127.0.0.1:8000/flow/
 
 Pick "POST /orders" in the sidebar, then a trace, to see the actual call
 tree: get_user -> validate_payment -> charge_card -> stripe_api_call,

@@ -3,15 +3,27 @@ from __future__ import annotations
 import os
 from typing import Protocol
 
+from starlette.staticfiles import StaticFiles
+
 from routeflow.live import LiveBroadcaster
 from routeflow.middleware import RouteFlowMiddleware
-from routeflow.server import build_server_app
+from routeflow.server import FRONTEND_DIR, build_server_app
 from routeflow.store import TraceStore
 
 # Deliberately unlikely to collide with a real app's own routes, and
 # obviously "not part of your API" to anyone who spots it in a request
-# log — same idea as Django's /__debug__/.
+# log — same idea as Django's /__debug__/. The REST/WebSocket API lives
+# here; the flow-view UI is a separate mount, see FLOW_UI_PATH below.
 MOUNT_PATH = "/__routeflow__"
+
+# The flow view itself sits at a short, bare path directly on the host
+# app - matching FastAPI's own /docs, /redoc - rather than nested under
+# MOUNT_PATH, so it's a URL worth remembering. Real trade-off, made
+# deliberately: unlike MOUNT_PATH, this is a plausible name a host app
+# could already be using for its own route, so it's a small, genuine
+# collision risk - the same one FastAPI itself accepts with /docs (and
+# lets you override via docs_url=).
+FLOW_UI_PATH = "/flow"
 
 _ENV_VAR = "ROUTEFLOW_ENABLED"
 _FALSY = {"0", "false", "no", "off"}
@@ -51,10 +63,13 @@ def RouteFlow(
 
     Wires up the request-tracing middleware, the `TraceStore` it writes
     to, and a `LiveBroadcaster` it notifies as each trace finishes, then
-    mounts the small standalone server that reads from that store (and
-    pushes over that broadcaster) at `/__routeflow__` — `app.mount`, not
-    `include_router`, so RouteFlow's own routes get an isolated OpenAPI
-    schema and never show up in the host app's own `/docs`.
+    mounts two things — `app.mount`, not `include_router`, so both get
+    an isolated OpenAPI schema and never show up in the host app's own
+    `/docs`:
+
+    - the REST/WebSocket API at `/__routeflow__` (`MOUNT_PATH`)
+    - the flow-view UI at `/flow` (`FLOW_UI_PATH`), a short URL worth
+      remembering, matching FastAPI's own `/docs`/`/redoc`
 
     Returns `app` so this can be chained inline where that's convenient,
     e.g. `app = RouteFlow(FastAPI())`.
@@ -70,15 +85,17 @@ def RouteFlow(
     app.add_middleware(
         RouteFlowMiddleware,
         store=store,
-        exclude_prefix=MOUNT_PATH,
+        exclude_prefixes=(MOUNT_PATH, FLOW_UI_PATH),
         on_trace=broadcaster.broadcast_trace,
     )
     # Verified against a real FastAPI app, not just assumed from how
-    # `mount` is described: the mounted sub-app genuinely works (its
-    # routes respond) but is absent from `app.openapi()`'s generated
+    # `mount` is described: both mounted sub-apps genuinely work (their
+    # routes respond) but are absent from `app.openapi()`'s generated
     # schema and from `/docs` — FastAPI's schema generation only walks
     # `APIRoute`s it owns directly, so a `Mount`ed sub-application (this
     # one's a plain Starlette app, see server.py) is invisible to it
     # without any extra effort here.
     app.mount(MOUNT_PATH, build_server_app(store, broadcaster))
+    # html=True serves index.html for /flow and /flow/ alike.
+    app.mount(FLOW_UI_PATH, StaticFiles(directory=FRONTEND_DIR, html=True))
     return app

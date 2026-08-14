@@ -48,7 +48,7 @@ def about() -> None:
         "Quickstart:\n"
         "  from routeflow import RouteFlow\n"
         "  RouteFlow(app)  # one line, wherever your FastAPI app is created\n\n"
-        "Then open http://127.0.0.1:8000/__routeflow__/app/ (adjust host/port\n"
+        "Then open http://127.0.0.1:8000/flow/ (adjust host/port\n"
         "to match your server) while your app is running."
     )
 

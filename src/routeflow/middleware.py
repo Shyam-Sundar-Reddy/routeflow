@@ -62,7 +62,7 @@ class RouteFlowMiddleware:
         self,
         app: ASGIApp,
         store: TraceStore | None = None,
-        exclude_prefix: str | None = None,
+        exclude_prefixes: tuple[str, ...] = (),
         on_trace: Callable[[Trace], Awaitable[None]] | None = None,
     ) -> None:
         self.app = app
@@ -82,16 +82,17 @@ class RouteFlowMiddleware:
         # RouteFlow itself mounts onto it (see integration.py) — without
         # this, a browser polling GET /__routeflow__/traces would trace
         # itself, piling up as a bogus "unmatched" endpoint (confirmed:
-        # this was actually happening before `exclude_prefix` existed).
-        # `RouteFlow(app)` passes its own mount path here; direct use of
-        # the middleware without mounting anything leaves it unset.
-        self.exclude_prefix = exclude_prefix
+        # this was actually happening before this existed). A tuple, not
+        # a single prefix, because the REST/WS API and the flow-view UI
+        # are two *separate* mounts at two different paths (the UI moved
+        # to bare /flow, matching FastAPI's own /docs, /redoc, while the
+        # API stayed under the collision-safe /__routeflow__ prefix) -
+        # both need excluding. `RouteFlow(app)` passes both; direct use
+        # of the middleware without mounting anything leaves this empty.
+        self.exclude_prefixes = exclude_prefixes
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope["type"] != "http" or (
-            self.exclude_prefix is not None
-            and scope["path"].startswith(self.exclude_prefix)
-        ):
+        if scope["type"] != "http" or scope["path"].startswith(self.exclude_prefixes):
             await self.app(scope, receive, send)
             return
 

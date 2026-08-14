@@ -2,21 +2,20 @@
 // is served as a static file directly from the package, so it has to
 // run as-is in a browser with no bundling.
 
-// The page is served at ".../<mount>/app/" — the REST/WS API lives one
-// level up, at ".../<mount>/". Computed from the current URL rather than
-// hardcoded, so this keeps working regardless of what mount path a given
-// app was installed at.
-const API_BASE = window.location.pathname.replace(/app\/?$/, "");
+// This page is served at ".../flow/" — bare, directly on the host app's
+// own root (see integration.py's FLOW_UI_PATH), the same way FastAPI
+// serves /docs. HOST_ROOT is just "wherever this page's own mount point
+// is, minus 'flow/'" - derived from the current URL, not assumed, so a
+// host app that's itself served behind a path prefix (a reverse proxy,
+// say) still gets a correct Docs link below.
+const HOST_ROOT = window.location.pathname.replace(/flow\/?$/, "");
 
-// The host app's own root — everything in the URL *before* RouteFlow's
-// mount point (see integration.py's MOUNT_PATH). Not just "/": a host
-// app can itself be mounted under a prefix, so this is derived from the
-// current URL rather than assumed, the same reasoning as API_BASE above.
-const HOST_ROOT = (() => {
-  const marker = "/__routeflow__/";
-  const index = window.location.pathname.indexOf(marker);
-  return index === -1 ? "/" : window.location.pathname.slice(0, index + 1);
-})();
+// Unlike the UI, the REST/WS API is *not* nested under FLOW_UI_PATH — it
+// lives at its own, separately-mounted, collision-safe prefix (see
+// integration.py's MOUNT_PATH). Can't be derived from this page's own
+// URL the way it used to be when both were nested together, so this is
+// HOST_ROOT plus that fixed, known prefix.
+const API_BASE = `${HOST_ROOT}__routeflow__/`;
 
 document.getElementById("docs-tab").href = HOST_ROOT + "docs";
 
@@ -471,6 +470,53 @@ const TIMELINE_AXIS_H = 16;
 const TIMELINE_TICK_COUNT = 5;
 
 /**
+ * Row assignment for the timeline: depth alone isn't enough. Two spans
+ * at the same depth are usually sequential siblings and can safely share
+ * a row — but asyncio.gather makes it just as normal for two same-depth
+ * spans to run at the *same time*, and sharing a row then means their
+ * bars visually overlap, silently misrepresenting "these ran together"
+ * as "this is one longer call" (confirmed against a real trace: every
+ * gather pair - inventory/pricing, their own DB children, email/sms -
+ * produced exactly this collision).
+ *
+ * Fix: pack each depth's own spans independently, greedily, into the
+ * fewest sub-rows such that nothing sharing a sub-row overlaps in time
+ * (the same algorithm a calendar view uses for overlapping meetings).
+ * Sequential siblings still end up sharing one row, same as before;
+ * only spans that are genuinely concurrent get split into their own.
+ * Returns each span's *global* row index (depths stack in order) and
+ * the total row count.
+ */
+function packTimelineRows(spans, depthOf) {
+  const maxDepth = Math.max(...depthOf.values());
+  const rowOf = new Map();
+  let rowCursor = 0;
+
+  for (let depth = 0; depth <= maxDepth; depth++) {
+    const atDepth = spans
+      .filter((s) => depthOf.get(s.span_id) === depth)
+      .sort((a, b) => a.start_time - b.start_time);
+
+    const subRowEnds = []; // last end time (ms, trace-relative) per sub-row
+    for (const span of atDepth) {
+      const start = span.start_time;
+      const end = start + (span.duration_ms ?? 0) / 1000;
+      let subRow = subRowEnds.findIndex((endTime) => endTime <= start);
+      if (subRow === -1) {
+        subRow = subRowEnds.length;
+        subRowEnds.push(end);
+      } else {
+        subRowEnds[subRow] = end;
+      }
+      rowOf.set(span.span_id, rowCursor + subRow);
+    }
+    rowCursor += Math.max(1, subRowEnds.length);
+  }
+
+  return { rowOf, rowCount: rowCursor };
+}
+
+/**
  * The flamegraph-style strip: every span as a horizontal bar positioned
  * by when it ran and how long it took, relative to the trace's own
  * start — literally the same (offset, duration) pair the detail panel
@@ -489,11 +535,16 @@ function renderTimeline(trace) {
   }
 
   const depthOf = computeDepths(trace.spans);
-  const rowCount = Math.max(...depthOf.values()) + 1;
+  const { rowOf, rowCount } = packTimelineRows(trace.spans, depthOf);
   const height = TIMELINE_AXIS_H + TIMELINE_MARGIN * 2 + rowCount * TIMELINE_ROW_H +
     Math.max(0, rowCount - 1) * TIMELINE_ROW_GAP;
 
   svg.setAttribute("viewBox", `0 0 ${TIMELINE_VIRTUAL_WIDTH} ${height}`);
+  // Real pixel height, not stretched to a fixed box - a trace needing
+  // more rows (packTimelineRows) actually gets a taller strip instead of
+  // every row just getting proportionally thinner. .strip-scroll's own
+  // max-height + overflow-y is the ceiling for a genuinely deep trace.
+  svg.style.height = `${height}px`;
 
   // A span can outlast the trace's own recorded duration by a hair (the
   // trace closes as soon as the response is ready, spans close as their
@@ -526,7 +577,7 @@ function renderTimeline(trace) {
   for (const span of trace.spans) {
     const offsetMs = (span.start_time - trace.started_at) * 1000;
     const durationMs = span.duration_ms ?? 0;
-    const depth = depthOf.get(span.span_id);
+    const row = rowOf.get(span.span_id);
 
     const rect = document.createElementNS(svgNS, "rect");
     rect.setAttribute("class", `timeline-bar ${span.status === "error" ? "error" : "ok"}`);
@@ -534,7 +585,7 @@ function renderTimeline(trace) {
     rect.setAttribute("x", String(TIMELINE_MARGIN + offsetMs * pxPerMs));
     rect.setAttribute(
       "y",
-      String(TIMELINE_AXIS_H + TIMELINE_MARGIN + depth * (TIMELINE_ROW_H + TIMELINE_ROW_GAP))
+      String(TIMELINE_AXIS_H + TIMELINE_MARGIN + row * (TIMELINE_ROW_H + TIMELINE_ROW_GAP))
     );
     // A floor on width - an instant (0ms) call would otherwise render as
     // a zero-width, unclickable, invisible rect.
@@ -810,6 +861,8 @@ function connectLiveSocket() {
 
   return socket;
 }
+
+document.getElementById("detail-close").addEventListener("click", clearSelection);
 
 loadEndpoints();
 connectLiveSocket();

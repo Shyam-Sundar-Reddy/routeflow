@@ -26,7 +26,7 @@ Try:
         curl -s -X POST "http://127.0.0.1:8000/checkout?order_id=$i&user_id=$i" &
     done; wait
 
-Then open http://127.0.0.1:8000/__routeflow__/app/ and pick "POST /checkout".
+Then open http://127.0.0.1:8000/flow/ and pick "POST /checkout".
 
 What to look for in the graph:
   - one root span (checkout_service_process_checkout) with a deep call

@@ -182,10 +182,12 @@ against a real FastAPI app, not just assumed from how `mount` is
 documented.
 
 Routes: `GET /traces` (optionally filtered by `route_pattern`),
-`GET /traces/{id}`, `GET /endpoints` (aggregate stats), `WS /live`, and
-`/app/*` — the flow-view frontend itself, served as static files
-(`StaticFiles(..., html=True)`), shipped inside the package so there's no
-separate frontend build/install step.
+`GET /traces/{id}`, `GET /endpoints` (aggregate stats), `WS /live`. The
+flow-view frontend itself is *not* one of these routes — it's mounted
+separately, at bare `/flow` directly on the host app (see
+`integration.py`), served as static files (`StaticFiles(..., html=True)`)
+shipped inside the package so there's no separate frontend build/install
+step.
 
 `LiveBroadcaster` tracks connected `/live` WebSocket clients in a `set`
 (more than one flow-view tab can be open) and pushes each finished trace to
@@ -197,8 +199,15 @@ can't stop the trace from reaching everyone else.
 
 `RouteFlow(app)` is the entire public install surface: creates a
 `TraceStore` and a `LiveBroadcaster`, installs the middleware with both
-wired in (plus its own mount path, to exclude itself), and mounts the
-server app at `/__routeflow__`.
+wired in, and mounts *two* things — the REST/WS API (`server.py`) at the
+collision-safe `/__routeflow__` prefix (`MOUNT_PATH`), and the flow-view
+UI separately, at bare `/flow` (`FLOW_UI_PATH`) directly on the host app,
+matching FastAPI's own `/docs`/`/redoc` rather than being buried under a
+prefix. That second one is a real, deliberate trade-off: unlike
+`MOUNT_PATH`, `/flow` is a plausible name a host app might already be
+using for its own route — the same trade-off FastAPI itself accepts with
+`/docs` (and exposes `docs_url=` to override). The middleware excludes
+*both* prefixes from tracing itself.
 
 **On by default, with an explicit off switch.** This is a dev tool — "add
 one line, it just works" is the point — but traces can include captured
@@ -213,10 +222,12 @@ either way, for a caller that wants to decide in code
 
 Vanilla HTML/CSS/JS, no framework, no build step — it's served as-is
 directly from the package, so it has to run in a browser exactly as
-written. `app.js` derives its own API base and the host app's root from
-`window.location.pathname` rather than hardcoding `/__routeflow__` twice,
-so it keeps working regardless of what mount path a given install actually
-used.
+written. Since the UI (`/flow`) and the API (`/__routeflow__`) are two
+separate mounts now, `app.js` can only derive the host app's own root
+from `window.location.pathname` (strip `flow/` off whatever URL loaded
+the page) — the API base then has to be that root plus the fixed,
+known `__routeflow__/` prefix, since it's no longer nested inside the
+page's own URL the way it was before the UI moved to a bare path.
 
 Sidebar (`GET /endpoints`) → trace list for the selected endpoint
 (`GET /traces?route_pattern=...`) → node graph for the selected trace,

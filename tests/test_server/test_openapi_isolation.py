@@ -5,7 +5,7 @@ from collections.abc import Callable
 from fastapi import FastAPI
 from starlette.routing import Mount
 
-from routeflow.integration import MOUNT_PATH
+from routeflow.integration import FLOW_UI_PATH, MOUNT_PATH
 
 
 def test_routeflow_routes_are_absent_from_the_openapi_schema(app: FastAPI) -> None:
@@ -14,6 +14,7 @@ def test_routeflow_routes_are_absent_from_the_openapi_schema(app: FastAPI) -> No
     paths = list(schema["paths"])
     assert paths == ["/orders/{id}", "/crash"]
     assert not any(MOUNT_PATH in path for path in paths)
+    assert not any(FLOW_UI_PATH in path for path in paths)
 
 
 def test_docs_still_renders(
@@ -24,13 +25,17 @@ def test_docs_still_renders(
     assert response.status_code == 200
 
 
-def test_mount_is_genuinely_present_despite_being_invisible_to_the_schema(
+def test_mounts_are_genuinely_present_despite_being_invisible_to_the_schema(
     app: FastAPI,
 ) -> None:
-    """The isolation from the two tests above isn't because the mount
-    silently failed — confirms the `Mount` is really on `app.routes`,
-    and its own routes really respond (covered by test_rest_endpoints.py),
-    it's just excluded from what `app.openapi()` walks.
+    """The isolation from the two tests above isn't because either mount
+    silently failed — confirms both `Mount`s are really on `app.routes`
+    (the REST/WS API and the separately-mounted /flow UI), and their own
+    routes really respond (covered by test_rest_endpoints.py and
+    test_flow_view_smoke.py), it's just excluded from what
+    `app.openapi()` walks.
     """
     mounts = [route for route in app.routes if isinstance(route, Mount)]
-    assert any(mount.path == MOUNT_PATH for mount in mounts)
+    mount_paths = {mount.path for mount in mounts}
+    assert MOUNT_PATH in mount_paths
+    assert FLOW_UI_PATH in mount_paths

@@ -45,12 +45,22 @@
               <svg id="timeline-svg" preserveAspectRatio="none"></svg>
             </div>
           </div>
+          <div class="legend">
+            <span class="legend-item"><span class="legend-swatch ok"></span>ok</span>
+            <span class="legend-item"><span class="legend-swatch error"></span>error</span>
+            <span class="legend-item"><span class="legend-badge">2</span>depth (nesting level)</span>
+            <span class="legend-item"><span class="legend-mono">+37ms</span>time since parent started</span>
+            <span class="legend-item">click a node to trace its path to root · click empty space to clear</span>
+          </div>
         </div>
       </main>
 
       <aside id="detail" class="detail" hidden>
         <div class="detail-section">
-          <h4>Selected span</h4>
+          <div class="detail-section-head">
+            <h4>Selected span</h4>
+            <button id="detail-close" class="detail-close" type="button" title="Close (clear selection)">✕</button>
+          </div>
           <div class="detail-title"><span id="detail-name" class="fn"></span></div>
           <div id="detail-metrics"></div>
         </div>

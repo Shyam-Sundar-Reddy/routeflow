@@ -61,17 +61,20 @@ def test_flow_view_serves_and_renders_a_real_traced_request(
     assert response.status_code == 500
 
     # --- Static files are served and cross-reference each other ---
-    index_response = do_request(app, "GET", "/__routeflow__/app/")
+    # /flow, not /__routeflow__/flow — the UI is its own, separate mount
+    # directly on the host app (see integration.py's FLOW_UI_PATH),
+    # matching FastAPI's own /docs, /redoc.
+    index_response = do_request(app, "GET", "/flow/")
     assert index_response.status_code == 200
     index_html = index_response.text
     assert 'src="app.js"' in index_html
     assert 'href="app.css"' in index_html
 
-    js_response = do_request(app, "GET", "/__routeflow__/app/app.js")
+    js_response = do_request(app, "GET", "/flow/app.js")
     assert js_response.status_code == 200
     app_js = js_response.text
 
-    css_response = do_request(app, "GET", "/__routeflow__/app/app.css")
+    css_response = do_request(app, "GET", "/flow/app.css")
     assert css_response.status_code == 200
 
     # --- Every element id app.js looks up must exist in index.html ---
@@ -136,3 +139,26 @@ def test_flow_view_serves_and_renders_a_real_traced_request(
     charge_span = next(s for s in trace["spans"] if s["name"] == "charge_card")
     assert charge_span["status"] == "error"
     assert stripe_span["parent_id"] == charge_span["span_id"]
+
+
+def test_routeflows_own_requests_are_never_traced(
+    do_request: Callable[..., object],
+) -> None:
+    """RouteFlowMiddleware wraps the *entire* app, including its own two
+    mounts (see integration.py's exclude_prefixes) — without that, a
+    browser polling its own /flow assets or /__routeflow__ REST endpoints
+    would generate traces for itself, piling up as bogus "unmatched"
+    endpoints. Both mounts are separate paths since the /flow UI move
+    (this test predates no fix; there was no regression test locking
+    this in before, only the docstring's word for it).
+    """
+    app = _build_traced_app()
+
+    do_request(app, "GET", "/flow/")
+    do_request(app, "GET", "/flow/app.js")
+    do_request(app, "GET", "/__routeflow__/traces")
+    do_request(app, "GET", "/__routeflow__/endpoints")
+
+    endpoints = do_request(app, "GET", "/__routeflow__/endpoints").json()
+    traced_paths = {e["route_pattern"] for e in endpoints}
+    assert not any(p and (p.startswith("/flow") or p.startswith("/__routeflow__")) for p in traced_paths)
