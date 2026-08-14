@@ -253,8 +253,30 @@ body {
   stroke-width: 2.5;
 }
 
+.timeline-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.timeline-axis-label {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
+  fill: var(--muted);
+}
+
+/* Sized by JS to the *scaled* graph dimensions (renderGraph's fit-to-width
+ * logic) - this is what the scrollable ancestor (.canvas-scroll) actually
+ * measures, so "fits without scrolling" and "the box you can scroll" agree
+ * with each other. .graph itself keeps its natural (unscaled) size and is
+ * shrunk onto this box via CSS transform, which doesn't affect layout size
+ * on its own - hence the wrapper. */
+.graph-viewport {
+  position: relative;
+}
+
 .graph {
   position: relative;
+  transform-origin: top left;
 }
 
 .graph svg {
@@ -262,6 +284,37 @@ body {
   inset: 0;
   overflow: visible;
   pointer-events: none;
+}
+
+.edge {
+  fill: none;
+  stroke: currentColor;
+  stroke-opacity: 0.4;
+  stroke-width: 1.4;
+  transition: opacity 0.15s ease, stroke 0.15s ease, stroke-opacity 0.15s ease;
+}
+
+.edge-label {
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 9.5px;
+  fill: var(--muted);
+  transition: opacity 0.15s ease, fill 0.15s ease;
+}
+
+.edge.highlighted {
+  stroke: var(--post);
+  stroke-opacity: 1;
+  stroke-width: 2.2;
+}
+
+.edge-label.highlighted {
+  fill: var(--post);
+  font-weight: 700;
+}
+
+.edge.dimmed,
+.edge-label.dimmed {
+  opacity: 0.28;
 }
 
 .node {
@@ -277,6 +330,24 @@ body {
 .node .bar {
   width: 4px;
   flex: none;
+}
+
+.node .depth-badge {
+  flex: none;
+  align-self: center;
+  margin-left: 6px;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--panel-raised);
+  border: 1px solid var(--border);
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .node.ok .bar {
@@ -314,6 +385,31 @@ body {
 
 .node.selected {
   box-shadow: 0 0 0 2px var(--post);
+}
+
+.node {
+  transition: opacity 0.15s ease, border-color 0.15s ease;
+}
+
+.node.highlighted {
+  border-color: var(--post);
+}
+
+.node.dimmed {
+  opacity: 0.35;
+}
+
+.timeline-bar {
+  transition: opacity 0.15s ease;
+}
+
+.timeline-bar.highlighted {
+  stroke: var(--post);
+  stroke-width: 2;
+}
+
+.timeline-bar.dimmed {
+  opacity: 0.35;
 }
 
 .detail {
@@ -358,6 +454,22 @@ body {
 
 .metric-row span:last-child {
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+}
+
+.parent-link {
+  font: inherit;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  color: var(--get);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  text-decoration-color: transparent;
+}
+
+.parent-link:hover {
+  text-decoration-color: currentColor;
 }
 
 .arg-row {

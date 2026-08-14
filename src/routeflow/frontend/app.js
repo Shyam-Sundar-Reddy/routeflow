@@ -217,6 +217,9 @@ const NODE_H = 56;
 const COL_GAP = 24;
 const ROW_GAP = 48;
 const MARGIN = 20;
+// Below this, text stops being readable - past this point a wide trace is
+// left to scroll horizontally instead of shrinking further.
+const MIN_FIT_SCALE = 0.5;
 
 /**
  * Depth of each span via its parent_id chain (root spans are depth 0) —
@@ -242,39 +245,63 @@ function computeDepths(spans) {
 
 /**
  * Positions each span as a (x, y, width, height) box: depth becomes the
- * row, spans within a depth are laid out left-to-right in the order they
- * appear (already call order — see Trace.to_dict). Not a full tidy-tree
- * layout (children aren't centered under their specific parent), but
- * every edge is still drawn correctly regardless, so the tree structure
- * itself is always accurate even when the geometry is just "good enough"
- * for now.
+ * row; within a row, x comes from a bottom-up tree layout, not append
+ * order — a leaf gets the next free horizontal slot (left to right, call
+ * order), and a parent's slot is the average of its own children's, so a
+ * node always sits above the midpoint of its actual subtree rather than
+ * wherever it happened to appear in a flat per-depth list.
+ *
+ * This matters once a trace has more than one branch at the same depth
+ * (any @track call under asyncio.gather, or just several sibling calls) —
+ * the previous append-order layout put a child wherever its position in
+ * a flat row landed, with no relation to where its real parent was drawn,
+ * which produced edges jogging sideways by hundreds of pixels to reach
+ * their own child. Verified against a real trace from
+ * examples/production_demo.py before this fix (worst case: a single edge
+ * had to jog 970px sideways) and after (structurally guaranteed not to
+ * happen: leaf slots are strictly increasing in call order, and every
+ * parent's slot is bounded within its own children's slot range, so
+ * sibling subtrees can never overlap or cross).
  */
 function layoutSpans(spans) {
   const depthOf = computeDepths(spans);
+  const byId = new Map(spans.map((span) => [span.span_id, span]));
+  const childrenOf = (parentId) =>
+    spans.filter((span) => span.parent_id === parentId);
 
-  const rows = [];
+  let nextSlot = 0;
+  const slotOf = new Map();
+  function assignSlot(span) {
+    if (slotOf.has(span.span_id)) return slotOf.get(span.span_id);
+    const kids = childrenOf(span.span_id);
+    const slot =
+      kids.length === 0
+        ? nextSlot++
+        : kids.reduce((sum, kid) => sum + assignSlot(kid), 0) / kids.length;
+    slotOf.set(span.span_id, slot);
+    return slot;
+  }
+  // Normally exactly one root (parent_id === null); more than one shows
+  // up if the route handler itself isn't @track-ed and calls several
+  // tracked functions directly — each gets its own slot range in the
+  // same left-to-right sweep, same as siblings under a real parent.
   for (const span of spans) {
-    const depth = depthOf.get(span.span_id);
-    if (!rows[depth]) rows[depth] = [];
-    rows[depth].push(span);
+    if (span.parent_id === null || !byId.has(span.parent_id)) assignSlot(span);
   }
 
   const positions = new Map();
-  let maxCols = 0;
-  rows.forEach((row, rowIndex) => {
-    maxCols = Math.max(maxCols, row.length);
-    row.forEach((span, colIndex) => {
-      positions.set(span.span_id, {
-        span,
-        x: MARGIN + colIndex * (NODE_W + COL_GAP),
-        y: MARGIN + rowIndex * (NODE_H + ROW_GAP),
-      });
+  for (const span of spans) {
+    positions.set(span.span_id, {
+      span,
+      x: MARGIN + slotOf.get(span.span_id) * (NODE_W + COL_GAP),
+      y: MARGIN + depthOf.get(span.span_id) * (NODE_H + ROW_GAP),
     });
-  });
+  }
 
-  const width = MARGIN * 2 + maxCols * NODE_W + Math.max(0, maxCols - 1) * COL_GAP;
-  const height =
-    MARGIN * 2 + rows.length * NODE_H + Math.max(0, rows.length - 1) * ROW_GAP;
+  const maxX = Math.max(...[...positions.values()].map((p) => p.x));
+  const maxRow = Math.max(...[...depthOf.values()]);
+  const width = maxX + NODE_W + MARGIN;
+  const height = MARGIN * 2 + (maxRow + 1) * NODE_H + maxRow * ROW_GAP;
   return { positions, width, height };
 }
 
@@ -292,13 +319,17 @@ function renderGraph(trace) {
   document.getElementById("canvas-placeholder").hidden = true;
   document.getElementById("canvas-body").hidden = false;
   const graph = document.getElementById("graph");
+  const graphViewport = document.getElementById("graph-viewport");
   graph.innerHTML = "";
+  graph.style.transform = "";
 
   renderTimeline(trace);
 
   if (trace.spans.length === 0) {
     graph.style.width = "";
     graph.style.height = "";
+    graphViewport.style.width = "";
+    graphViewport.style.height = "";
     const empty = document.createElement("p");
     empty.className = "placeholder";
     empty.textContent = "No @track-ed calls recorded for this request.";
@@ -307,8 +338,39 @@ function renderGraph(trace) {
   }
 
   const { positions, width, height } = layoutSpans(trace.spans);
+  const depthOf = computeDepths(trace.spans);
   graph.style.width = `${width}px`;
   graph.style.height = `${height}px`;
+
+  // Fit-to-width: a wide fan-out (several branches at the same depth,
+  // easy to get from asyncio.gather) can be wider than the canvas ever
+  // is, which used to mean entire branches sat off-screen with no visual
+  // hint they existed - just a scrollbar to stumble onto by accident.
+  // Scaling the whole graph down to fit is the same "zoom to fit" any
+  // graph/diagram tool defaults to; .graph-viewport is sized to the
+  // *scaled* dimensions so .canvas-scroll's own overflow calculation
+  // agrees with what's actually visible, instead of reserving scroll
+  // space for the pre-scale size.
+  //
+  // The available width has to come from .canvas-scroll itself, not
+  // .graph-viewport - .graph-viewport's own size is what this code is
+  // about to set, and .graph (its child) already has an explicit huge
+  // width from the layout above, so measuring either of those here would
+  // just read back a stale or content-driven number instead of the
+  // actual viewport space, min 0 to survive an unmeasurable/detached DOM.
+  const canvasScroll = document.getElementById("canvas-scroll");
+  const scrollStyle = getComputedStyle(canvasScroll);
+  const availableWidth = Math.max(
+    0,
+    canvasScroll.clientWidth -
+      parseFloat(scrollStyle.paddingLeft) -
+      parseFloat(scrollStyle.paddingRight)
+  );
+  const rawScale = availableWidth > 0 ? availableWidth / width : 1;
+  const scale = Math.min(1, Math.max(MIN_FIT_SCALE, rawScale));
+  graph.style.transform = scale !== 1 ? `scale(${scale})` : "";
+  graphViewport.style.width = `${width * scale}px`;
+  graphViewport.style.height = `${height * scale}px`;
 
   const svgNS = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(svgNS, "svg");
@@ -318,14 +380,33 @@ function renderGraph(trace) {
   for (const { span, x, y } of positions.values()) {
     const parentPos = span.parent_id ? positions.get(span.parent_id) : null;
     if (!parentPos) continue;
-    const line = document.createElementNS(svgNS, "line");
-    line.setAttribute("x1", String(parentPos.x + NODE_W / 2));
-    line.setAttribute("y1", String(parentPos.y + NODE_H));
-    line.setAttribute("x2", String(x + NODE_W / 2));
-    line.setAttribute("y2", String(y));
-    line.setAttribute("stroke", "currentColor");
-    line.setAttribute("stroke-opacity", "0.4");
-    svg.appendChild(line);
+
+    // A gentle S-curve reads as "a call" rather than a ruled line, and
+    // keeps many edges converging on one root from visually knotting up
+    // at that single point the way straight lines do.
+    const x1 = parentPos.x + NODE_W / 2, y1 = parentPos.y + NODE_H;
+    const x2 = x + NODE_W / 2, y2 = y;
+    const midY = (y1 + y2) / 2;
+    const path = document.createElementNS(svgNS, "path");
+    path.setAttribute("d", `M${x1},${y1} C${x1},${midY} ${x2},${midY} ${x2},${y2}`);
+    path.setAttribute("class", "edge");
+    path.dataset.child = span.span_id;
+    path.dataset.parent = span.parent_id;
+    svg.appendChild(path);
+
+    // Gap = how long after the parent *started* this child started -
+    // same number the mockups showed, now on the real thing. Concurrent
+    // branches (asyncio.gather) read as near-identical gaps at a glance.
+    const parentSpan = positions.get(span.parent_id).span;
+    const gapMs = Math.round((span.start_time - parentSpan.start_time) * 1000);
+    const label = document.createElementNS(svgNS, "text");
+    label.setAttribute("x", String((x1 + x2) / 2 + 6));
+    label.setAttribute("y", String(midY + 3));
+    label.setAttribute("class", "edge-label");
+    label.dataset.child = span.span_id;
+    label.dataset.parent = span.parent_id;
+    label.textContent = `+${gapMs}ms`;
+    svg.appendChild(label);
   }
   graph.appendChild(svg);
 
@@ -333,14 +414,24 @@ function renderGraph(trace) {
     const node = document.createElement("div");
     node.className = `node ${span.status === "error" ? "error" : "ok"}`;
     node.dataset.spanId = span.span_id;
+    node.dataset.parentId = span.parent_id ?? "";
     node.style.left = `${x}px`;
     node.style.top = `${y}px`;
     node.style.width = `${NODE_W}px`;
     node.style.height = `${NODE_H}px`;
+    // Native tooltip: a name truncated by the node's fixed width (ellipsis,
+    // see .node .name) is still readable on hover instead of only guessable.
+    node.title = span.name;
     node.addEventListener("click", () => selectSpan(span));
 
     const bar = document.createElement("span");
     bar.className = "bar";
+
+    const depth = depthOf.get(span.span_id);
+    const depthBadge = document.createElement("span");
+    depthBadge.className = "depth-badge";
+    depthBadge.textContent = String(depth);
+    depthBadge.title = `Depth ${depth}`;
 
     const inner = document.createElement("div");
     inner.className = "inner";
@@ -353,9 +444,16 @@ function renderGraph(trace) {
       span.duration_ms === null ? "running…" : `${Math.round(span.duration_ms)}ms`;
     inner.append(name, sub);
 
-    node.append(bar, inner);
+    node.append(bar, depthBadge, inner);
     graph.appendChild(node);
   }
+
+  // Clicking empty canvas (not a node) clears the selection - the same
+  // "click away to deselect" a click-to-highlight interaction needs, since
+  // nothing here uses an expand/collapse control to get back to neutral.
+  graph.addEventListener("click", (event) => {
+    if (event.target === graph || event.target === svg) clearSelection();
+  });
 }
 
 // Fixed "virtual" width for the timeline's SVG viewBox — real pixel
@@ -366,6 +464,11 @@ const TIMELINE_VIRTUAL_WIDTH = 1000;
 const TIMELINE_ROW_H = 18;
 const TIMELINE_ROW_GAP = 6;
 const TIMELINE_MARGIN = 8;
+// Extra height at the top reserved for the 0ms/100ms/... axis labels -
+// without this the strip showed relative bar proportions but no actual
+// timing, which is most of what a "timeline" is for.
+const TIMELINE_AXIS_H = 16;
+const TIMELINE_TICK_COUNT = 5;
 
 /**
  * The flamegraph-style strip: every span as a horizontal bar positioned
@@ -387,7 +490,7 @@ function renderTimeline(trace) {
 
   const depthOf = computeDepths(trace.spans);
   const rowCount = Math.max(...depthOf.values()) + 1;
-  const height = TIMELINE_MARGIN * 2 + rowCount * TIMELINE_ROW_H +
+  const height = TIMELINE_AXIS_H + TIMELINE_MARGIN * 2 + rowCount * TIMELINE_ROW_H +
     Math.max(0, rowCount - 1) * TIMELINE_ROW_GAP;
 
   svg.setAttribute("viewBox", `0 0 ${TIMELINE_VIRTUAL_WIDTH} ${height}`);
@@ -400,6 +503,26 @@ function renderTimeline(trace) {
   const usableWidth = TIMELINE_VIRTUAL_WIDTH - TIMELINE_MARGIN * 2;
   const pxPerMs = usableWidth / totalMs;
 
+  for (let i = 0; i < TIMELINE_TICK_COUNT; i++) {
+    const frac = i / (TIMELINE_TICK_COUNT - 1);
+    const tickX = TIMELINE_MARGIN + frac * usableWidth;
+    const line = document.createElementNS(svgNS, "line");
+    line.setAttribute("class", "timeline-gridline");
+    line.setAttribute("x1", String(tickX));
+    line.setAttribute("x2", String(tickX));
+    line.setAttribute("y1", String(TIMELINE_AXIS_H));
+    line.setAttribute("y2", String(height));
+    svg.appendChild(line);
+
+    const label = document.createElementNS(svgNS, "text");
+    label.setAttribute("class", "timeline-axis-label");
+    label.setAttribute("x", String(tickX));
+    label.setAttribute("y", String(TIMELINE_AXIS_H - 4));
+    label.setAttribute("text-anchor", i === TIMELINE_TICK_COUNT - 1 ? "end" : "start");
+    label.textContent = `${Math.round(frac * totalMs)}ms`;
+    svg.appendChild(label);
+  }
+
   for (const span of trace.spans) {
     const offsetMs = (span.start_time - trace.started_at) * 1000;
     const durationMs = span.duration_ms ?? 0;
@@ -409,7 +532,10 @@ function renderTimeline(trace) {
     rect.setAttribute("class", `timeline-bar ${span.status === "error" ? "error" : "ok"}`);
     rect.dataset.spanId = span.span_id;
     rect.setAttribute("x", String(TIMELINE_MARGIN + offsetMs * pxPerMs));
-    rect.setAttribute("y", String(TIMELINE_MARGIN + depth * (TIMELINE_ROW_H + TIMELINE_ROW_GAP)));
+    rect.setAttribute(
+      "y",
+      String(TIMELINE_AXIS_H + TIMELINE_MARGIN + depth * (TIMELINE_ROW_H + TIMELINE_ROW_GAP))
+    );
     // A floor on width - an instant (0ms) call would otherwise render as
     // a zero-width, unclickable, invisible rect.
     rect.setAttribute("width", String(Math.max(durationMs * pxPerMs, 3)));
@@ -425,12 +551,44 @@ function renderTimeline(trace) {
   }
 }
 
+// A span's own ancestor chain, root first isn't needed here - order
+// doesn't matter, only membership does (which nodes/edges sit on the
+// path back to the root, for highlighting).
+function ancestorChain(span) {
+  const byId = new Map(currentTrace.spans.map((s) => [s.span_id, s]));
+  const chain = [];
+  let cur = span;
+  while (cur) {
+    chain.push(cur.span_id);
+    cur = cur.parent_id ? byId.get(cur.parent_id) : null;
+  }
+  return chain;
+}
+
 function selectSpan(span) {
   selectedSpanId = span.span_id;
+  const chain = new Set(ancestorChain(span));
+
   for (const el of document.querySelectorAll(".node, .timeline-bar")) {
+    const onPath = chain.has(el.dataset.spanId);
     el.classList.toggle("selected", el.dataset.spanId === span.span_id);
+    el.classList.toggle("highlighted", onPath && el.dataset.spanId !== span.span_id);
+    el.classList.toggle("dimmed", !onPath);
+  }
+  for (const el of document.querySelectorAll(".edge, .edge-label")) {
+    const onPath = chain.has(el.dataset.child) && chain.has(el.dataset.parent);
+    el.classList.toggle("highlighted", onPath);
+    el.classList.toggle("dimmed", !onPath);
   }
   renderDetail(span);
+}
+
+function clearSelection() {
+  selectedSpanId = null;
+  for (const el of document.querySelectorAll(".node, .timeline-bar, .edge, .edge-label")) {
+    el.classList.remove("selected", "highlighted", "dimmed");
+  }
+  document.getElementById("detail").hidden = true;
 }
 
 function renderDetail(span) {
@@ -451,9 +609,9 @@ function renderDetail(span) {
   metrics.innerHTML = "";
   const rows = [
     ["Status", span.status === "error" ? "✕ error" : "ok"],
+    ["Depth", String(computeDepths(currentTrace.spans).get(span.span_id))],
     ["Started at", `${startedAtMs}ms`],
     ["Duration", span.duration_ms === null ? "—" : `${Math.round(span.duration_ms)}ms`],
-    ["Parent span", parent ? parent.name : "— (root)"],
   ];
   for (const [label, value] of rows) {
     const row = document.createElement("div");
@@ -465,6 +623,27 @@ function renderDetail(span) {
     row.append(labelEl, valueEl);
     metrics.appendChild(row);
   }
+
+  // Parent span as a jump-to-it link when there is one, rather than
+  // inert text - the relationship it names should be one click away, not
+  // just something you visually hunt for back in the graph.
+  const parentRow = document.createElement("div");
+  parentRow.className = "metric-row";
+  const parentLabel = document.createElement("span");
+  parentLabel.textContent = "Parent span";
+  const parentValue = document.createElement("span");
+  if (parent) {
+    const link = document.createElement("button");
+    link.type = "button";
+    link.className = "parent-link";
+    link.textContent = parent.name;
+    link.addEventListener("click", () => selectSpan(parent));
+    parentValue.appendChild(link);
+  } else {
+    parentValue.textContent = "— (root)";
+  }
+  parentRow.append(parentLabel, parentValue);
+  metrics.appendChild(parentRow);
 
   const argsContainer = document.getElementById("detail-args");
   argsContainer.innerHTML = "";
