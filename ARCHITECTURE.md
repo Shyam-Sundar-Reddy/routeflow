@@ -131,6 +131,27 @@ arbitrary user functions:
   close almost instantly with a meaningless duration. Decorating one issues
   a `RuntimeWarning` rather than failing outright.
 
+**`track_module(module, *, exclude=(), redact=None, capture_args=True)`**
+applies `@track` to every function *defined in* a module, in place —
+bulk convenience for onboarding an existing codebase without hand-adding
+`@track` to each function. Deliberately not a global `auto_trace=True`
+switch: that would capture arguments for functions nobody ever reviewed
+for "does this take a password," the same silent-leak risk
+`RouteFlow(app)`'s docstring warns about for the whole app, just
+per-function. `track_module` stays a scoped, reviewable call site — a
+`git diff` shows exactly which module opted in — while still composing
+with per-function overrides (`exclude=`, or a manual `@track(...)`
+applied before calling it). Two things are skipped automatically, not
+just `exclude`: anything not a plain function *defined in that module*
+(`func.__module__ == module.__name__` — a class, or a name merely
+imported into the module's namespace, is left alone), and anything
+already `@track`-ed (checked via a `__routeflow_tracked__` marker `track`
+sets on its wrapper, not by re-inspecting behavior) — so calling it
+twice, or over a module where a few functions were already hand-decorated,
+never double-wraps. Scoped to top-level functions only; methods
+(`__init__`, bound/unbound, inherited) are a large enough separate
+problem to deliberately leave out rather than guess at.
+
 ## The middleware (`middleware.py`)
 
 `RouteFlowMiddleware` is the request boundary — pure ASGI
@@ -205,6 +226,15 @@ separately, at bare `/flow` directly on the host app (see
 `integration.py`), served as static files (`StaticFiles(..., html=True)`)
 shipped inside the package so there's no separate frontend build/install
 step.
+
+None of these routes require authentication — a deliberate trade-off for
+a local, dev-only tool (see the README's "No authentication" section),
+not an oversight, but worth stating here plainly rather than leaving it
+to be inferred from reading the routes themselves: anyone who can reach
+the port can read every captured trace, including any unredacted
+arguments. It's the reason `redact=`/`mask()`/`capture_args=False`
+(`decorator.py`) matter as much as they do — there's no auth gate behind
+them.
 
 `LiveBroadcaster` tracks connected `/live` WebSocket clients in a `set`
 (more than one flow-view tab can be open) and pushes each finished trace to

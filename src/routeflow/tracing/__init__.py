@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from routeflow.tracing.context import get_current_span, get_current_trace
-from routeflow.tracing.decorator import track
+from routeflow.tracing.decorator import mask, track, track_module
 from routeflow.tracing.lifecycle import close_span, open_span, span_scope
 from routeflow.tracing.span import ErrorInfo, LogEntry, Span
 from routeflow.tracing.trace import Trace
@@ -14,7 +14,9 @@ __all__ = [
     "close_span",
     "get_current_span",
     "get_current_trace",
+    "mask",
     "open_span",
     "span_scope",
     "track",
+    "track_module",
 ]

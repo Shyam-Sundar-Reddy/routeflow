@@ -7,6 +7,19 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+- **`mask(*field_names, replacement="***")`** — builds a `redact=`
+  callable for `@track`/`track_module`, e.g. `redact=mask("password",
+  "token")`, replacing the few-line lambda most projects were
+  reimplementing by hand. Still opt-in by exact field name, not by
+  guessing which arguments "look sensitive" — same trust model as
+  writing the lambda yourself, just less boilerplate.
+- **`track_module(module, *, exclude=(), redact=None, capture_args=True)`**
+  — bulk-applies `@track` to every function *defined in* a module, for
+  onboarding an existing codebase without hand-adding `@track` everywhere.
+  Deliberately not a global `auto_trace=True` switch (would capture
+  arguments for functions nobody reviewed for sensitive data) — stays a
+  scoped, reviewable call site instead. Skips classes, names merely
+  imported into the module, and anything already `@track`-ed.
 - **CLI**: `routeflow doctor` (checks the local env for the exact
   gotchas this project has actually hit — missing WebSocket support,
   Python version, `ROUTEFLOW_ENABLED` state), `routeflow traces --url`
@@ -42,6 +55,14 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   order bug where a real HTTP 404 was reported as "can't reach the
   server" (`HTTPError` is a subclass of `URLError`; the more general
   case was caught first).
+
+### Documentation
+
+- **The `/__routeflow__` API and `/flow` UI have no authentication** —
+  previously only discoverable by reading `server.py`, now a stated
+  caveat in both the README and `ARCHITECTURE.md`. It's the reason
+  `redact=`/`mask()`/`capture_args=False` matter as much as they do —
+  there's no auth gate standing behind them.
 
 ## [0.3.0] - Released
 

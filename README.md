@@ -72,6 +72,23 @@ order, how long each took, and — if something raised — exactly where.
   and then always re-raised unchanged — RouteFlow never changes what your
   code does, only what you can see about it.
 
+Hand-adding `@track` to a whole existing codebase is real boilerplate —
+`track_module` covers that without becoming a blanket auto-trace-everything
+switch (which would undermine the redaction story above: nobody reviewed
+those functions for "does this take a password"):
+
+```python
+from routeflow.tracing import track_module
+import myapp.services.orders as orders
+
+track_module(orders, exclude={"_internal_helper"})
+```
+
+Only wraps functions actually *defined* in that module (not ones merely
+imported into it), skips anything already `@track`-ed, and is still a
+deliberate, reviewable call site — a `git diff` shows exactly which
+module opted in.
+
 ## The flow view
 
 - Sidebar lists every endpoint that's been hit, with request count, p95
@@ -97,6 +114,22 @@ ROUTEFLOW_ENABLED=0
 set in the environment disables it completely — no middleware installed, no
 route mounted, your app handed back untouched. `RouteFlow(app, enabled=False)`
 does the same from code, e.g. `enabled=settings.debug`.
+
+## No authentication — know this before running it
+
+The `/__routeflow__` API and the `/flow` UI have **no authentication at
+all**. Anyone who can reach the port your app is running on can read every
+captured trace — including any unredacted arguments. This is a deliberate
+trade-off for a local, dev-only tool (the same one Django's Debug
+Toolbar and Werkzeug's debugger make), not an oversight, but it's worth
+being explicit about rather than something you only discover by reading
+`server.py`:
+
+- It's *why* `redact=`/`mask()`/`capture_args=False` (above) matter as
+  much as they do — there's no auth gate standing behind them.
+- Never expose the port RouteFlow (or your app) is running on to an
+  untrusted network. `ROUTEFLOW_ENABLED=0` in production is the real
+  boundary, not "nobody will guess the URL."
 
 ## How much history it keeps
 

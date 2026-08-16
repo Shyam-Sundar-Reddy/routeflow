@@ -3,7 +3,8 @@ from __future__ import annotations
 import functools
 import inspect
 import warnings
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from types import ModuleType
 from typing import TypeVar, overload
 
 from routeflow.tracing.lifecycle import span_scope
@@ -13,6 +14,29 @@ F = TypeVar("F", bound=Callable)
 Redactor = Callable[[str, object], object]
 
 _MAX_REPR_LEN = 200
+
+
+def mask(*field_names: str, replacement: str = "***") -> Redactor:
+    """Build a `redact=` callable that masks specific argument names by
+    exact match:
+
+        @track(redact=mask("password", "token"))
+        def login(username: str, password: str) -> bool: ...
+
+    Saves writing the same few-line lambda by hand — nothing more. Still
+    opt-in by name, not by guessing which arguments "look sensitive": you
+    name exactly what gets masked, same as writing the lambda yourself
+    would require. Auto-redacting anything whose name merely *contains*
+    "password"/"token"/etc. would be a different, riskier feature (false
+    negatives on anything not guessed, false positives on legitimate
+    args) — not what this does.
+    """
+    names = set(field_names)
+
+    def redact(name: str, value: object) -> object:
+        return replacement if name in names else value
+
+    return redact
 
 
 def _safe_repr(value: object) -> str:
@@ -150,6 +174,11 @@ def track(
                         span.args = capture(args, kwargs)
                     return await func(*args, **kwargs)
 
+            # Lets track_module() (and anything else) tell "already
+            # @track-ed" apart from "not yet" - functools.wraps doesn't
+            # copy this from the original, since the original was never
+            # tracked itself.
+            async_wrapper.__routeflow_tracked__ = True  # type: ignore[attr-defined]
             return async_wrapper  # type: ignore[return-value]
 
         @functools.wraps(func)
@@ -159,6 +188,7 @@ def track(
                     span.args = capture(args, kwargs)
                 return func(*args, **kwargs)
 
+        sync_wrapper.__routeflow_tracked__ = True  # type: ignore[attr-defined]
         return sync_wrapper  # type: ignore[return-value]
 
     if func is not None:
@@ -166,3 +196,64 @@ def track(
         return decorator(func)
     # @track(name=..., redact=...) — return the factory to apply.
     return decorator
+
+
+def track_module(
+    module: ModuleType,
+    *,
+    exclude: Iterable[str] = (),
+    redact: Redactor | None = None,
+    capture_args: bool = True,
+) -> list[str]:
+    """Apply `@track` to every function *defined in* `module`, in place.
+
+        from routeflow.tracing import track_module
+        import myapp.services.orders as orders
+
+        track_module(orders, exclude={"_internal_helper"})
+
+    Deliberately *not* a global `auto_trace=True` switch — that would
+    undermine the whole point of `redact=`/`capture_args=False`: those
+    only work because a human looked at a specific function and decided
+    what's safe to capture. Auto-tracing an entire app means capturing
+    arguments for functions nobody ever reviewed for "does this take a
+    password" — the same silent-leak risk `RouteFlow(app)`'s docstring
+    warns about for the whole app, just per-function instead of per-app.
+    This is the scoped middle ground instead: bulk convenience for
+    onboarding an existing module, but still a deliberate, reviewable
+    call site — `git diff` shows exactly which module opted in, and
+    `exclude=`/a manual `@track(...)` beforehand still let individual
+    functions be handled differently.
+
+    Two things are skipped automatically, not just `exclude`:
+
+    - Anything not a plain function *defined in this module* — a class,
+      a re-exported name imported from elsewhere (`obj.__module__` won't
+      match `module.__name__`), anything already wrapped by an earlier
+      `track`/`track_module` call (checked via the marker `track` sets,
+      not by re-inspecting behavior).
+    - Scoped to top-level functions only — methods aren't walked here.
+      Bound/unbound methods, `__init__`, and inherited methods are enough
+      of a separate problem that they're deliberately left out rather
+      than guessed at.
+
+    Returns the names actually wrapped, so a caller can log or assert
+    what happened — bulk shouldn't mean invisible.
+    """
+    excluded = set(exclude)
+    wrapped_names: list[str] = []
+
+    for attr_name, obj in list(vars(module).items()):
+        if attr_name in excluded:
+            continue
+        if not inspect.isfunction(obj):
+            continue
+        if getattr(obj, "__module__", None) != module.__name__:
+            continue  # imported from elsewhere, not defined here
+        if getattr(obj, "__routeflow_tracked__", False):
+            continue  # already @track-ed, manually or by an earlier call
+
+        setattr(module, attr_name, track(obj, redact=redact, capture_args=capture_args))
+        wrapped_names.append(attr_name)
+
+    return wrapped_names

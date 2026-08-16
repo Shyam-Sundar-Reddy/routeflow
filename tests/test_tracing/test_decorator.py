@@ -5,7 +5,7 @@ import inspect
 
 import pytest
 
-from routeflow.tracing import Trace, track
+from routeflow.tracing import Trace, mask, track
 
 
 def test_sync_function_produces_a_span(trace: Trace) -> None:
@@ -180,6 +180,39 @@ def test_redact_hook_masks_a_captured_argument(trace: Trace) -> None:
     (span,) = trace.spans.values()
     assert span.args["user"] == "'sam'"
     assert span.args["password"] == "'***'"
+
+
+def test_mask_helper_redacts_named_fields_by_exact_match(trace: Trace) -> None:
+    @track(redact=mask("password", "token"))
+    def login(user: str, password: str, token: str) -> bool:
+        return True
+
+    login("sam", "hunter2", "abc123")
+
+    (span,) = trace.spans.values()
+    assert span.args == {
+        "user": "'sam'",
+        "password": "'***'",
+        "token": "'***'",
+    }
+
+
+def test_mask_helper_only_matches_named_fields_exactly() -> None:
+    """Opt-in by exact name, not by guessing "looks sensitive" - a field
+    merely containing "password" in its name (password_confirm) must not
+    be swept up by naming "password".
+    """
+    redact = mask("password")
+
+    assert redact("password", "hunter2") == "***"
+    assert redact("password_confirm", "hunter2") == "hunter2"
+    assert redact("user", "sam") == "sam"
+
+
+def test_mask_helper_custom_replacement() -> None:
+    redact = mask("password", replacement="<redacted>")
+
+    assert redact("password", "hunter2") == "<redacted>"
 
 
 def test_capture_args_false_skips_capture_entirely(trace: Trace) -> None:
