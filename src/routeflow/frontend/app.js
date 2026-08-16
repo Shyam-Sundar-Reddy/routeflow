@@ -439,8 +439,16 @@ function renderGraph(trace) {
     name.textContent = span.name;
     const sub = document.createElement("div");
     sub.className = "sub";
+    // Error state must never be color-only (the red border/bar alone
+    // fails for anyone who can't distinguish red from the ok-blue at a
+    // glance) - "✕ error" here matches the wording already used in the
+    // detail panel's own Status row.
     sub.textContent =
-      span.duration_ms === null ? "running…" : `${Math.round(span.duration_ms)}ms`;
+      span.duration_ms === null
+        ? "running…"
+        : span.status === "error"
+          ? `✕ error · ${Math.round(span.duration_ms)}ms`
+          : `${Math.round(span.duration_ms)}ms`;
     inner.append(name, sub);
 
     node.append(bar, depthBadge, inner);
@@ -594,8 +602,14 @@ function renderTimeline(trace) {
     rect.setAttribute("rx", "2");
     rect.addEventListener("click", () => selectSpan(span));
 
+    // Same reasoning as the node graph's .sub text - the bar's color is
+    // the only other signal for error status, and that must never be
+    // the sole cue, not even one only visible on hover.
     const title = document.createElementNS(svgNS, "title");
-    title.textContent = `${span.name} — ${Math.round(durationMs)}ms`;
+    title.textContent =
+      span.status === "error"
+        ? `${span.name} — ✕ error · ${Math.round(durationMs)}ms`
+        : `${span.name} — ${Math.round(durationMs)}ms`;
     rect.appendChild(title);
 
     svg.appendChild(rect);

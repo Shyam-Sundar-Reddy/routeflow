@@ -89,6 +89,17 @@ def test_flow_view_serves_and_renders_a_real_traced_request(
             f"app.js references #{element_id}, but index.html has no such id"
         )
 
+    # --- Error status must never be color-only ---
+    # A node/timeline-bar's red border/fill is the only *other* signal
+    # for "this span failed" - color alone fails for anyone who can't
+    # distinguish red from the ok-blue at a glance. Can't render the page
+    # to check the pixels, but confirms the text-producing code path is
+    # actually there, not just the color class.
+    assert "✕ error" in app_js, (
+        "expected app.js to render an explicit error indicator, not rely on "
+        "node/timeline-bar color alone"
+    )
+
     # --- REST responses have the shape app.js's renderers read ---
     endpoints = do_request(app, "GET", "/__routeflow__/endpoints").json()
     (endpoint,) = endpoints

@@ -5,6 +5,18 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [0.3.1] - Unreleased
 
+### Added
+
+- **CLI**: `routeflow doctor` (checks the local env for the exact
+  gotchas this project has actually hit — missing WebSocket support,
+  Python version, `ROUTEFLOW_ENABLED` state), `routeflow traces --url`
+  (list recent traces from a running instance without opening a
+  browser), `routeflow export --url --out` (dump the ring buffer to a
+  file before it rotates out — the only way to keep history past a
+  restart), `routeflow open` (open the flow view in your default
+  browser). No daemon, no config file — every command that talks to a
+  running app takes an explicit `--url`.
+
 ### Fixed
 
 - **`ROUTEFLOW_ENABLED=0` / `enabled=False` was not a true no-op for
@@ -20,6 +32,16 @@ follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   instead of `None` so `get_current_span().log(...)` inside a
   `@track`-ed function (the same pattern this project's own examples
   use) doesn't crash either.
+- **Error status was color-only** in the node graph and timeline strip —
+  the red border/fill was the *only* signal a span had failed, with no
+  text or icon fallback, not even on hover. Both now show an explicit
+  "✕ error" alongside the color.
+- Two bugs caught building the CLI commands above, both regression-tested:
+  rich markup silently swallowing literal `[...]` in dynamic text (e.g.
+  `uvicorn[standard]` rendered as `uvicorn`), and an exception-handling
+  order bug where a real HTTP 404 was reported as "can't reach the
+  server" (`HTTPError` is a subclass of `URLError`; the more general
+  case was caught first).
 
 ## [0.3.0] - Released
 

@@ -128,6 +128,24 @@ redaction, a deterministic failure and a flaky one — see
 [`examples/production_demo.py`](./examples/production_demo.py) (same run
 command, different filename).
 
+## CLI
+
+No daemon, no config file — every command that talks to a running app
+takes an explicit `--url` (default `http://127.0.0.1:8000`):
+
+```bash
+routeflow doctor                                # check your local env
+routeflow open --url http://127.0.0.1:8000       # open the flow view
+routeflow traces --url http://127.0.0.1:8000     # list recent traces
+routeflow export --url http://127.0.0.1:8000 --out traces.json  # save them
+```
+
+`routeflow doctor` is the one that doesn't need a running app — it checks
+your local environment for the gotchas this project has actually hit
+(missing WebSocket support being the big one — see the `uvicorn[standard]`
+note above). `export` is currently the only way to keep trace history past
+a restart; there's no persistence otherwise.
+
 ## How it works
 
 See [ARCHITECTURE.md](./ARCHITECTURE.md) for the mechanism: the
