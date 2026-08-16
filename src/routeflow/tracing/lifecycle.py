@@ -49,7 +49,7 @@ def close_span(span: Span) -> None:
 
 
 @contextmanager
-def span_scope(name: str) -> Iterator[Span]:
+def span_scope(name: str) -> Iterator[Span | None]:
     """Open a span, make it the current span for the duration of the block,
     and close it on exit — success or failure alike.
 
@@ -57,7 +57,23 @@ def span_scope(name: str) -> Iterator[Span]:
     doesn't get silently marked "ok" by close_span) and always re-raised
     unchanged — this must never alter what the wrapped code does, only
     observe it.
+
+    With no active trace at all — RouteFlow disabled via
+    `ROUTEFLOW_ENABLED=0`/`enabled=False`, or its middleware never
+    installed — this is a true no-op: yields `None` and runs the wrapped
+    block exactly as if `@track` weren't there, instead of raising.
+    That's what makes "leave `@track` in your code, flip the flag off in
+    production" actually safe, matching `RouteFlow(app)`'s documented
+    "app handed back completely untouched" claim for disabled mode. Bug,
+    now fixed: this used to call `open_span` unconditionally, which
+    raised `RuntimeError` here — turning every `@track`-ed endpoint into
+    an unhandled 500 the moment tracing was disabled, exactly the
+    scenario this flag exists to make safe.
     """
+    if get_current_trace() is None:
+        yield None
+        return
+
     span = open_span(name)
     token = set_current_span(span)
     try:

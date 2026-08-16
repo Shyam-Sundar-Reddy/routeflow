@@ -66,19 +66,36 @@ without stepping on each other. Two properties this depends on, verified in
 
 `open_span(name)` reads the current trace and current span, creates a
 `Span` parented to whichever span is currently in scope (or root, if none),
-and registers it on the trace. It raises if called with no active trace —
-a span with nowhere to attach is a caller bug, not something to silently
-drop.
+and registers it on the trace. Called directly (not through `span_scope`),
+it still raises if there's no active trace — a span with nowhere to
+attach and no caller prepared to handle `None` is a bug in that caller.
 
 `close_span(span)` records `end_time` and, if the span is still `"running"`
 (i.e. nothing already called `record_error`), derives `"ok"`.
 
-`span_scope(name)` is the context manager that ties these together: opens
-a span, makes it current for the block, and on exit — success or
-failure — restores the previous current span and closes this one. If the
-block raises, the exception is recorded on the span via `record_error`
-**and always re-raised unchanged**. RouteFlow must never alter what traced
-code does, only observe it.
+`span_scope(name)` is the context manager `@track` actually uses, and it
+does **not** share `open_span`'s raise-on-no-trace behavior — with no
+active trace at all (RouteFlow disabled via `ROUTEFLOW_ENABLED=0` /
+`enabled=False`, or its middleware never installed), it's a true no-op:
+yields `None` and runs the wrapped block exactly as if `@track` weren't
+there. Bug, fixed: this used to call `open_span` unconditionally, so a
+`@track`-ed function raised `RuntimeError` the moment tracing was
+disabled — turning every traced endpoint into an unhandled 500 in
+exactly the scenario `ROUTEFLOW_ENABLED=0` exists to make safe.
+`get_current_span()` mirrors this — it returns a shared, harmless
+placeholder span (not `None`) when there's no active trace at all, so
+code like `get_current_span().log(...)` inside a `@track`-ed function
+doesn't crash either; it still returns real `None` for the *other*
+"no current span" case — a trace is active but nothing's been opened
+yet — since `open_span` relies on that real `None` to mark a root span
+correctly.
+
+When a trace *is* active, `span_scope` opens a span, makes it current for
+the block, and on exit — success or failure — restores the previous
+current span and closes this one. If the block raises, the exception is
+recorded on the span via `record_error` **and always re-raised
+unchanged**. RouteFlow must never alter what traced code does, only
+observe it — in both the traced and the disabled case alike.
 
 One consequence worth knowing, not a bug: because the same exception
 propagates through every enclosing `span_scope`, a failure marks **every

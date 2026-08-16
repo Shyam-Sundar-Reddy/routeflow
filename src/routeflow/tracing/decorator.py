@@ -142,8 +142,12 @@ def track(
 
             @functools.wraps(func)
             async def async_wrapper(*args: object, **kwargs: object) -> object:
+                # span is None when there's no active trace (RouteFlow
+                # disabled) - span_scope's own true-no-op case; skip
+                # capture rather than crash on None.args.
                 with span_scope(span_name) as span:
-                    span.args = capture(args, kwargs)
+                    if span is not None:
+                        span.args = capture(args, kwargs)
                     return await func(*args, **kwargs)
 
             return async_wrapper  # type: ignore[return-value]
@@ -151,7 +155,8 @@ def track(
         @functools.wraps(func)
         def sync_wrapper(*args: object, **kwargs: object) -> object:
             with span_scope(span_name) as span:
-                span.args = capture(args, kwargs)
+                if span is not None:
+                    span.args = capture(args, kwargs)
                 return func(*args, **kwargs)
 
         return sync_wrapper  # type: ignore[return-value]

@@ -62,7 +62,11 @@ def RouteFlow(
     decide in code instead (e.g. `enabled=settings.debug`).
 
     When disabled, this is a true no-op: no middleware installed, no
-    route mounted, `app` handed back completely untouched.
+    route mounted, `app` handed back completely untouched — and every
+    `@track`-decorated function keeps working exactly as if undecorated
+    (it just runs the wrapped call, nothing recorded), not raising. Bug,
+    now fixed: this used to raise instead, turning every `@track`-ed
+    endpoint into an unhandled 500 the moment tracing was disabled.
 
     Every request is traced — there's no sampling (trace 1 in N, or X%)
     yet, only this: `max_traces` caps how many *finished* traces stay in

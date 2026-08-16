@@ -3,7 +3,25 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.3.0] - Unreleased
+## [0.3.1] - Unreleased
+
+### Fixed
+
+- **`ROUTEFLOW_ENABLED=0` / `enabled=False` was not a true no-op for
+  `@track`.** The middleware and both mounts correctly disabled, but
+  `@track` is a separate mechanism and kept calling `open_span()`
+  unconditionally — which raises with no active trace. Every
+  `@track`-decorated endpoint returned an unhandled 500 the moment
+  tracing was disabled, in exactly the "leave `@track` in your code,
+  flip the env var off in production" scenario the flag exists to make
+  safe. Reported with a full repro; fixed at the root: `span_scope`
+  (what `@track` actually uses) is now a true no-op with no active
+  trace, and `get_current_span()` returns a harmless placeholder
+  instead of `None` so `get_current_span().log(...)` inside a
+  `@track`-ed function (the same pattern this project's own examples
+  use) doesn't crash either.
+
+## [0.3.0] - Released
 
 ### Added
 
