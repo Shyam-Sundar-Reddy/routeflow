@@ -3,7 +3,30 @@
 All notable changes to this project are documented here. Format loosely
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
-## [0.3.1] - Unreleased
+## [0.3.2] - Unreleased
+
+### Fixed
+
+- **The logo didn't render on PyPI.** The README's `<picture>` logo used
+  paths relative to the repo (`docs/logo...svg`), which only resolve on
+  GitHub — PyPI has no way to fetch a path relative to its own domain.
+  Switched to absolute `raw.githubusercontent.com` URLs, verified to
+  actually resolve (200) before publishing. Also confirmed directly from
+  `readme_renderer`'s source: PyPI's Markdown sanitizer allows `<picture>`
+  but strips `<source>`, so the dark-mode variant won't switch on PyPI
+  specifically — it degrades to the light logo there, not to nothing.
+  GitHub still gets full light/dark switching.
+- This is also why the version bump: PyPI releases are immutable — the
+  displayed README is fixed to whatever was uploaded with `0.3.1`, and
+  can only be updated by publishing a new version, not edited in place.
+
+### Added
+
+- **PyPI license badge** next to the version badge — verified the
+  underlying metadata (`license: 'MIT'`) is actually published correctly
+  and the badge itself resolves before adding it.
+
+## [0.3.1] - Released
 
 ### Added
 
