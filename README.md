@@ -1,4 +1,7 @@
-# routeflow
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/logo-wordmark-dark.svg">
+  <img src="docs/logo-wordmark-light.svg" alt="routeflow" height="60">
+</picture>
 
 [![Tests](https://github.com/Shyam-Sundar-Reddy/routeflow/actions/workflows/ci.yml/badge.svg)](https://github.com/Shyam-Sundar-Reddy/routeflow/actions/workflows/ci.yml)
 [![PyPI version](https://img.shields.io/pypi/v/routeflow.svg)](https://pypi.org/project/routeflow/)

@@ -1,0 +1,327 @@
+<title>RouteFlow Field Report</title>
+<style>
+  /* Deliberately single-theme (dark, instrument-panel dark) - this is a
+   * promotional one-pager meant to be screenshotted/printed for LinkedIn,
+   * not a tool someone reads in their own light/dark preference. Every
+   * color below is the real product's own dark-theme token set
+   * (src/routeflow/frontend/app.css), reused exactly - this piece should
+   * look like it belongs to the same product someone clicks through to,
+   * not a separate marketing skin invented for the occasion.
+   */
+  :root {
+    --bg: #0c0e12;
+    --panel: #171b21;
+    --panel-raised: #1d222a;
+    --border: rgba(255, 255, 255, 0.09);
+    --text: #e7eaee;
+    --muted: #8b93a1;
+    --amber: #e0954a;
+    --amber-deep: #c96f2e;
+    --get: #4a9fe0;
+    --err: #e2554f;
+    --font-ui: ui-sans-serif, "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+    --font-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font-ui);
+    line-height: 1.5;
+  }
+
+  .page {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 56px 48px 64px;
+  }
+
+  /* ---- header ---- */
+
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 44px;
+  }
+
+  .brand .mark circle { fill: var(--amber); }
+  .brand .mark circle.root { fill: var(--amber-deep); }
+  .brand .mark path { stroke: var(--amber); }
+
+  .brand .word {
+    font-weight: 800;
+    font-size: 22px;
+    letter-spacing: -0.5px;
+  }
+
+  /* ---- hero ---- */
+
+  h1 {
+    font-size: 46px;
+    font-weight: 800;
+    letter-spacing: -1.2px;
+    line-height: 1.08;
+    margin: 0 0 18px;
+    text-wrap: balance;
+  }
+
+  h1 .accent { color: var(--amber); }
+
+  .lede {
+    font-size: 18px;
+    color: var(--muted);
+    max-width: 62ch;
+    margin: 0 0 28px;
+  }
+
+  .install {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 12px 18px;
+    font-family: var(--font-mono);
+    font-size: 15px;
+  }
+
+  .install .prompt { color: var(--muted); }
+
+  /* ---- before / after ---- */
+
+  .section {
+    margin-top: 56px;
+  }
+
+  .eyebrow {
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--muted);
+    margin: 0 0 16px;
+  }
+
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+  }
+
+  .compare-card {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px;
+  }
+
+  .compare-card h3 {
+    margin: 0 0 14px;
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  .compare-card.before h3 { color: var(--err); }
+  .compare-card.after h3 { color: var(--amber); }
+
+  .log-line {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    padding: 3px 0;
+    border-bottom: 1px dashed var(--border);
+  }
+
+  .log-line.err { color: var(--err); }
+
+  /* ---- mechanism diagram ---- */
+
+  .diagram-frame {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 20px 24px;
+  }
+
+  .diagram-frame svg { display: block; width: 100%; height: auto; }
+
+  /* ---- stat strip ---- */
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+  }
+
+  .stat {
+    background: var(--panel);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 18px 16px;
+  }
+
+  .stat .n {
+    font-family: var(--font-mono);
+    font-size: 28px;
+    font-weight: 700;
+    color: var(--amber);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .stat .d {
+    font-size: 12.5px;
+    color: var(--muted);
+    margin-top: 4px;
+  }
+
+  /* ---- how it works ---- */
+
+  .steps {
+    display: grid;
+    gap: 14px;
+  }
+
+  .step {
+    display: grid;
+    grid-template-columns: 32px 1fr;
+    gap: 16px;
+    align-items: baseline;
+  }
+
+  .step .num {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    color: var(--amber);
+    font-weight: 700;
+  }
+
+  .step .t {
+    font-weight: 600;
+    font-size: 15px;
+  }
+
+  .step .d {
+    color: var(--muted);
+    font-size: 13.5px;
+    margin-top: 2px;
+  }
+
+  /* ---- footer ---- */
+
+  footer {
+    margin-top: 56px;
+    padding-top: 24px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 13px;
+    color: var(--muted);
+  }
+
+  footer a { color: var(--amber); text-decoration: none; }
+
+  @media print {
+    body { background: var(--bg); }
+    .page { padding: 28px 40px; }
+    .section { margin-top: 32px; }
+    @page { size: A4; margin: 0; }
+  }
+</style>
+
+<div class="page">
+  <div class="brand">
+    <svg class="mark" width="30" height="30" viewBox="0 0 100 100" role="img" aria-label="routeflow">
+      <g fill="none" stroke-width="4" stroke-linecap="round">
+        <path d="M50,29 C50,40 30,42 27,48" />
+        <path d="M50,29 L50,52" />
+        <path d="M50,29 C50,40 70,42 73,48" />
+        <path d="M50,68 L50,79" />
+      </g>
+      <circle class="root" cx="50" cy="20" r="11" />
+      <circle cx="27" cy="55" r="8" />
+      <circle cx="50" cy="60" r="8" />
+      <circle cx="73" cy="55" r="8" />
+      <circle cx="50" cy="86" r="7" />
+    </svg>
+    <span class="word">routeflow</span>
+  </div>
+
+  <h1>Swagger shows the contract.<br>RouteFlow shows <span class="accent">what actually happened.</span></h1>
+  <p class="lede">
+    A decorator, a live node graph, and a tab next to your FastAPI docs —
+    order, timing, logs, and errors for every traced request, instead of
+    piecing it together from scattered logs.
+  </p>
+  <div class="install"><span class="prompt">$</span> pip install routeflow</div>
+
+  <div class="section">
+    <p class="eyebrow">The problem it replaces</p>
+    <div class="compare">
+      <div class="compare-card before">
+        <h3>Reconstructing a request by hand</h3>
+        <div class="log-line">2026-08-17 14:02:11 INFO checkout started order=42</div>
+        <div class="log-line">2026-08-17 14:02:11 DEBUG validating payment...</div>
+        <div class="log-line">2026-08-17 14:02:11 INFO reserving inventory items=3</div>
+        <div class="log-line">2026-08-17 14:02:12 DEBUG calling stripe gateway</div>
+        <div class="log-line err">2026-08-17 14:02:12 ERROR TimeoutError in charge_card</div>
+        <div class="log-line">2026-08-17 14:02:12 INFO order 42 failed</div>
+      </div>
+      <div class="compare-card after">
+        <h3>One click on the actual trace</h3>
+        <div class="diagram-frame" style="padding:12px 14px;">
+          <svg viewBox="0 0 260 130" role="img" aria-label="A node graph showing checkout_service_process_checkout branching into validate_payment, charge_card, and stripe_gateway_charge, with stripe_gateway_charge highlighted red as the point of failure.">
+            <g stroke="#5a6472" stroke-width="1.4" fill="none">
+              <path d="M130,26 C130,40 70,42 60,54" />
+              <path d="M130,26 L130,54" />
+              <path d="M130,26 C130,40 190,42 200,54" />
+              <path d="M130,68 L130,96" stroke="#e2554f" stroke-width="2" />
+            </g>
+            <rect x="90" y="10" width="80" height="18" rx="4" fill="#1d222a" stroke="#3a414d" />
+            <text x="130" y="23" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="8" fill="#e7eaee">checkout</text>
+            <rect x="24" y="54" width="72" height="18" rx="4" fill="#1d222a" stroke="#3a414d" />
+            <text x="60" y="67" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="8" fill="#e7eaee">validate</text>
+            <rect x="96" y="54" width="70" height="18" rx="4" fill="#1d222a" stroke="#3a414d" />
+            <text x="131" y="67" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="8" fill="#e7eaee">charge_card</text>
+            <rect x="168" y="54" width="76" height="18" rx="4" fill="#1d222a" stroke="#3a414d" />
+            <text x="206" y="67" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="8" fill="#e7eaee">reserve</text>
+            <rect x="92" y="96" width="120" height="20" rx="4" fill="#2a1414" stroke="#e2554f" stroke-width="1.6" />
+            <text x="152" y="109" text-anchor="middle" font-family="ui-monospace,Consolas,monospace" font-size="8" fill="#f0a3a0">✕ stripe_gateway_charge</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="eyebrow">By the numbers</p>
+    <div class="stats">
+      <div class="stat"><div class="n">102</div><div class="d">tests, 2 Python versions</div></div>
+      <div class="stat"><div class="n">4</div><div class="d">real bugs caught &amp; fixed via live verification</div></div>
+      <div class="stat"><div class="n">0.3.1</div><div class="d">published on PyPI</div></div>
+      <div class="stat"><div class="n">1</div><div class="d">line to install: RouteFlow(app)</div></div>
+    </div>
+  </div>
+
+  <div class="section">
+    <p class="eyebrow">How it works</p>
+    <div class="steps">
+      <div class="step"><span class="num">1</span><div><div class="t">Decorate what you want traced</div><div class="d">@track on any function, sync or async — nesting builds itself from call order.</div></div></div>
+      <div class="step"><span class="num">2</span><div><div class="t">A request comes in</div><div class="d">Middleware opens a trace; every @track-ed call along the way becomes a timed, nested span.</div></div></div>
+      <div class="step"><span class="num">3</span><div><div class="t">Open the flow view</div><div class="d">A tab next to Swagger — the same request, rendered as an interactive node graph, live.</div></div></div>
+    </div>
+  </div>
+
+  <footer>
+    <span>MIT licensed · github.com/Shyam-Sundar-Reddy/routeflow</span>
+    <span>pypi.org/project/routeflow</span>
+  </footer>
+</div>
